@@ -40,7 +40,8 @@ func mklist(p, m, n1, n2 uint64) ([]uint32) {
 }
 
 func initInput(P, K1 uint64) {
-	p := C.mrhGetMap();
+	//p := C.mrhGetMap();
+	p := (*C.struct_Stuff)(C.mrhGetMap());
 	
 	K1 = C.M * (K1/C.M);
 	p.K[0] = C.uint(K1 & 0xffffffff)
@@ -65,12 +66,12 @@ func initInput(P, K1 uint64) {
 	p.L = 0
 	p.Init = 1
 	
-	C.mrhUnMap();
+	C.mrhUnMap()
 }
 
 func tfRun(P, K1 uint64, bitlimit float64) {
 	K1 = C.M * (K1/C.M);
-	p := C.mrhGetMap();
+	p := (*C.struct_Stuff)(C.mrhGetMap());
 
 	kfound := make([]uint64, 0, 10)
 	mrhDone := false
@@ -124,7 +125,7 @@ func main() {
 
 	P := parseint(os.Args[1])
 	B := parseint(os.Args[2])
-	r := C.tfVulkanInit()
+	r := C.tfVulkanInit(C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
 	if r == 0 {
 		initInput(P, 1);
 		fmt.Printf("init done\n")

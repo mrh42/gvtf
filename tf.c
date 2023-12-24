@@ -4,7 +4,7 @@
 #include <math.h>
 #include <time.h>
 #include <sys/time.h>
-#include "tf.h"
+//#include "tf.h"
 
 VkInstance instance;
 VkDebugReportCallbackEXT debugReportCallback;
@@ -31,7 +31,7 @@ uint32_t queueFamilyIndex;
 //
 // total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
 //
-const int np = 1024*1024*16;
+const int np = 1024*1024*8;
 
 void createInstance() {
         VkApplicationInfo applicationInfo = {};
@@ -528,19 +528,19 @@ void cleanup() {
         vkDestroyInstance(instance, NULL);		
 }
 
-struct Stuff * mrhGetMap()  {
+//struct Stuff * mrhGetMap()  {
+void * mrhGetMap()  {
 	void* mappedMemory = NULL;
 	vkMapMemory(device, bufferMemory, 0, bufferSize, 0, &mappedMemory);
-	struct Stuff *p = (struct Stuff *) mappedMemory;
-	return p;
+	return mappedMemory;
 }
 void mrhUnMap()  {
 	vkUnmapMemory(device, bufferMemory);
 }
 
-int tfVulkanInit() {
-	bufferSize = sizeof(struct Stuff);
-	bufferSize2 = sizeof(struct Stuff2);
+int tfVulkanInit(int bs1, int bs2) {
+	bufferSize = bs1;
+	bufferSize2 = bs2;
 
         // Initialize vulkan:
 	createInstance();
