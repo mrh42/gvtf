@@ -46,8 +46,7 @@ func initInput(P, K1 uint64) {
 	p.K[0] = C.uint(K1 & 0xffffffff)
 	p.K[1] = C.uint(K1>>32)
 	p.K[2] = 0
-	p.P[0] = C.uint(P & 0xffffffff)
-	p.P[1] = C.uint(P>>32)
+	p.P = C.ulong(P)
 
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0

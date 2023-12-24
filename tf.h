@@ -13,7 +13,7 @@
 // This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
 // it is somewhat slow, compared to DEVICE_LOCAL memory.
 struct Stuff {
-	uint32_t    P[2];  // 64 bit
+	uint64_t    P;  // 64 bit
 	uint32_t    K[3];  // 96, but only 64 used currently
 	uint32_t    Found[10][3];
 	uint32_t    Debug[2];

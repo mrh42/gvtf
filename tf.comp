@@ -34,7 +34,7 @@ layout (local_size_x = 64) in;
 // factor, but not all of the found factors.
 layout(binding = 0) buffer buf
 {	
-	uint        P[2];          // input from CPU side
+	uint64_t    P;          // input from CPU side
 	uint        K[3];       // base K input from CPU side
 	uint        Found[10][3];   // output to tell the CPU we found a K resulting in a factor
 	uint        Debug[2];   // output only used for debugging
@@ -280,12 +280,13 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 }
 
 
-bool tf(uint96 k, uint p[2], int top, uint oo) {
+bool tf(uint96 k, uint oo) {
 	uint96 sq, q, pp;
 	uint192 t;
 
+	int top = int(findMSB(P));
 	// q = 2 * p * k + 1
-	pp.x = uvec3(p[0], p[1], 0);
+	pp.x = uvec3(P & 0xffffffff, P >> 32, 0);
 	Mul192(k, pp, t);
 	q = t.L;  // q is limited to 96-bits
 	Lsh(q);
@@ -304,11 +305,7 @@ bool tf(uint96 k, uint p[2], int top, uint oo) {
 	sq.x = uvec3(1, 0, 0);
 	for (int b = top; b >= 0; b--) {
 		bool bb;
-		if (b < 32) {
-			bb = (p[0] & (1 << b)) != 0;
-		} else {
-			bb = (p[1] & (1 << (b-32))) != 0;
-		}
+		bb = (P & (1 << b)) != 0;
 		SqMod(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
@@ -324,7 +321,7 @@ void main() {
 				// All threads return here.
 				return;
 			}
-			uint64_t p64 = uint64_t(P[0]) | uint64_t(P[1]) << 32;
+			uint64_t p64 = P;
 			uint64_t q = (p64) * 2 * i + 1;
 			bool x = (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) || (q%5 == 0) || (q%7 == 0) || (q%11 == 0) || (q%13 == 0) || (q%17 == 0) || (q%19 == 0) || (q%23 == 0));
 			if (!x) {
@@ -366,14 +363,7 @@ void main() {
 		if (Zero(k)) {return;}
 		//return;
 		
-		int top;
-		if (P[1] == 0) {
-			top = int(findMSB(P[0]));
-		} else {
-			top = 32 + int(findMSB(P[1]));
-		}
-
-		if (tf(k, P, top, i)) {
+		if (tf(k, i)) {
 			// How many have we found?
 			uint f = atomicAdd(Debug[1], 1);
 			// return the 96-bit K
