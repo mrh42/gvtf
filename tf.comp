@@ -1,0 +1,380 @@
+#version 460
+// We aren't using any of these, but just in case we want to later...
+//#extension GL_ARB_separate_shader_objects : enable
+//#extension GL_ARB_gpu_shader_int64 : enable
+//#extension GL_EXT_debug_printf : enable
+//#extension GL_KHR_shader_subgroup_vote : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int16 : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
+//#extension GL_EXT_shader_atomic_int64: enable
+
+//
+// compile this file into SPIR-V with:
+//   glslangValidator --target-env vulkan1.3 -V tf.comp
+// or
+//   glslc --target-env=vulkan1.3 tf.comp -o comp.spv
+// glslc might produce slightly faster SPIR-V for the Radeon VII
+//
+// update: 32-bit version doesn't need to be compiled with 1.3, just use:
+//   glslangValidator  -V tf.comp
+//
+// Installing the 'vulkan-amdgpu' package will result in a significant (2.5x) performance increase.
+// also, maybe the difference isn't so much when not using uint64_t math.
+//
+#define M2 (29 * 31 * 37 * 41 * 43)
+
+#define ListN 72990720
+layout (local_size_x = 64) in;
+
+// for speed, we only have space to return one found factor.  In the case of P with multiple close factors,
+// which could be found in the same invocation, these will write over each other.  Since we might have 512K threads
+// looking at hundreds of factors each, we don't want to allocate memory to avoid this.  So we'll learn of a
+// factor, but not all of the found factors.
+layout(binding = 0) buffer buf
+{	
+	uint        P[2];          // input from CPU side
+	uint        K[3];       // base K input from CPU side
+	uint        Found[10][3];   // output to tell the CPU we found a K resulting in a factor
+	uint        Debug[2];   // output only used for debugging
+	uint        Init;       // If this is 0, then we setup our tables once.
+	uint        L;
+	uint        Ll;          // Length of List
+	uint        List[ListN];
+	uint        KmodM2;
+	uint        X2[M2];
+};
+
+
+// This is allocated in DEVICE_LOCAL memory, not shared with host.  See CPU code to see how this is allocated.
+// This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
+layout(binding = 1) buffer buf2
+{
+	uint       Listx[ListN];  // copy of List.  Just a tiny speed up.
+	bool       X2x[M2];
+};
+
+struct uint96 {
+	uvec3 x;
+};
+
+struct uint192 {
+	uint96 H;
+	uint96 L;
+};
+bool Zero(uint96 A) {
+	return A.x[0] == 0 && A.x[1] == 0 && A.x[2] == 0;
+}
+bool Zero(uint192 A) {
+	return Zero(A.L) && Zero(A.H);
+}
+
+void Lsh(inout uint96 A) {
+	uint c0 = A.x[0] & (uint(1) << 31);
+	uint c1 = A.x[1] & (uint(1) << 31);
+	A.x[0] <<= 1;
+	A.x[1] <<= 1;
+	A.x[1] |= c0 >> 31;
+	A.x[2] <<= 1;
+	A.x[2] |= c1 >> 31;
+}
+void Lsh(inout uint192 A) {
+	
+	uint c = A.L.x[2] & (uint(1) << 31);
+	Lsh(A.L);
+	Lsh(A.H);
+	A.H.x[0] |= c >> 31;
+}
+
+int Cmp(uint96 A, uint96 B) {
+	if (A.x[2] > B.x[2]) {return 1;}
+	if (A.x[2] < B.x[2]) {return -1;}
+	if (A.x[1] > B.x[1]) {return 1;}
+	if (A.x[1] < B.x[1]) {return -1;}
+	if (A.x[0] > B.x[0]) {return 1;}
+	if (A.x[0] < B.x[0]) {return -1;}
+	return 0;
+}
+int Cmp(uint192 A, uint96 B) {
+	if (Zero(A.H)) {
+		return Cmp(A.L, B);
+	} else {
+		if (Zero(B)) {
+			return 0;
+		}
+		return 1;
+	}
+}
+int Cmp(uint192 A, uint192 B) {
+	int c = Cmp(A.H, B.H);
+	if (c != 0) {
+		return c;
+	}
+	return Cmp(A.L, B.L);
+}
+void Inc(inout uint96 A) {
+	A.x[0] += 1;
+	if (A.x[0] == 0) {
+		A.x[1] += 1;
+		if (A.x[1] == 0) {
+			A.x[2] += 1;
+		}
+	}
+}
+void Inc(inout uint192 A) {
+	Inc(A.L);
+	if (Zero(A.L)) {
+		Inc(A.H);
+	}
+}
+void Add(inout uint96 A, uint B) {
+	uint C;
+	A.x[0] = uaddCarry(A.x[0], B, C);
+	A.x[1] = uaddCarry(A.x[1], C, C);
+	A.x[2] += C;
+}
+void Add(inout uint96 A, uint96 B) {
+	uint c, c1;
+	A.x[0] = uaddCarry(A.x[0], B.x[0], c);
+	A.x[1] = uaddCarry(A.x[1], c, c1);
+	A.x[1] = uaddCarry(A.x[1], B.x[1], c);
+	A.x[2] = A.x[2] + B.x[2] + c + c1;
+
+}
+void Subxx(inout uint192 A, uint192 B) {
+
+	uint c;
+	/// XXX this doesn't work, what about +c that overflows?  rare, but still fix it.
+	A.L.x[0] = usubBorrow(A.L.x[0], B.L.x[0], c);
+	A.L.x[1] = usubBorrow(A.L.x[1], B.L.x[1]+c, c);
+	A.L.x[2] = usubBorrow(A.L.x[2], B.L.x[2]+c, c);	
+	A.H.x[0] = usubBorrow(A.H.x[0], B.H.x[0]+c, c);	
+	A.H.x[1] = usubBorrow(A.H.x[1], B.H.x[1]+c, c);	
+	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c, c);	
+}
+void Sub(inout uint192 A, uint192 B) {
+
+	uint c, c1;
+	
+	A.L.x[0] = usubBorrow(A.L.x[0], B.L.x[0], c);
+	A.L.x[1] = usubBorrow(A.L.x[1], c, c1);
+	A.L.x[1] = usubBorrow(A.L.x[1], B.L.x[1], c);
+
+	A.L.x[2] = usubBorrow(A.L.x[2], c+c1, c);
+	A.L.x[2] = usubBorrow(A.L.x[2], B.L.x[2], c1);
+
+	A.H.x[0] = usubBorrow(A.H.x[0], c+c1, c);
+	A.H.x[0] = usubBorrow(A.H.x[0], B.H.x[0], c1);	
+
+	A.H.x[1] = usubBorrow(A.H.x[1], c+c1, c);	
+	A.H.x[1] = usubBorrow(A.H.x[1], B.H.x[1], c1);	
+
+	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c+c1, c);	
+}
+void Sub(inout uint96 A, uint96 B) {
+
+	uint c, c1;
+	
+	A.x[0] = usubBorrow(A.x[0], B.x[0], c);
+	A.x[1] = usubBorrow(A.x[1], c, c1);
+	A.x[1] = usubBorrow(A.x[1], B.x[1], c);
+
+	A.x[2] = usubBorrow(A.x[2], c+c1, c);
+	A.x[2] = usubBorrow(A.x[2], B.x[2], c1);
+}
+
+
+// 2^64, 2^128 and 2^192
+const   double p32 =  4294967296.0lf;
+const 	double p64 =  18446744073709551616.0lf;
+const   double p96 =  79228162514264337593543950336.0lf;
+const	double p128 = 340282366920938463463374607431768211456.0lf;
+const   double p160 = 1461501637330902918203684832716283019655932542976.0lf;
+//const	double p192 = 6277101735386680763835789423207666416102355444464034512896.0lf;
+
+double toF(uint96 A) {
+	return double(A.x[0]) + double(A.x[1]) * p32 + double(A.x[2]) * p64;
+}
+double toF(uint192 A) {
+	return double(A.L.x[0]) + double(A.L.x[1]) * p32 + double(A.L.x[2]) * p64 +
+		double(A.H.x[0]) * p96 + double(A.H.x[1]) * p128 + double(A.H.x[2]) * p160;
+}
+void fto96x(double f, out uint96 A) {
+	A.x[2] = uint(f / p64);
+	A.x[1] = uint((f - double(A.x[2]) * p64) / p32);
+	A.x[0] = uint(f - (double(A.x[2]) * p64 + double(A.x[1]) * p32));
+}
+void fto96(double f, out uint96 A) {
+	uint x = uint(f / p64);
+	A.x[2] = x;
+	uint y = uint((f - x * p64) / p32);
+	A.x[1] = y;
+	A.x[0] = uint(f - (x * p64 + y * p32));
+}
+
+void Mul192(inout uint96 A, uint96 B, out uint192 R)
+{
+	uint h[9], l[9];
+	uint c1, c2, c;
+
+	umulExtended(A.x[0], B.x[0], h[0], l[0]);
+	umulExtended(A.x[0], B.x[1], h[1], l[1]);
+	umulExtended(A.x[0], B.x[2], h[2], l[2]);
+	umulExtended(A.x[1], B.x[0], h[3], l[3]);
+	umulExtended(A.x[1], B.x[1], h[4], l[4]);
+	umulExtended(A.x[1], B.x[2], h[5], l[5]);
+	umulExtended(A.x[2], B.x[0], h[6], l[6]);
+	umulExtended(A.x[2], B.x[1], h[7], l[7]);
+	umulExtended(A.x[2], B.x[2], h[8], l[8]);
+
+	R.L.x[0] = l[0];
+	R.L.x[1] = uaddCarry(h[0], l[1], c1);	c = c1;
+	R.L.x[1] = uaddCarry(R.L.x[1], l[3], c1);	c += c1;
+
+	R.L.x[2] = uaddCarry(l[2], c, c1);	c = c1;
+	R.L.x[2] = uaddCarry(R.L.x[2], h[1], c1);	c += c1;
+	R.L.x[2] = uaddCarry(R.L.x[2], h[3], c1);	c += c1;
+	R.L.x[2] = uaddCarry(R.L.x[2], l[4], c1);	c += c1;
+	R.L.x[2] = uaddCarry(R.L.x[2], l[6], c1);	c += c1;
+
+	R.H.x[0] = uaddCarry(l[5], c, c1);	c = c1;
+	R.H.x[0] = uaddCarry(R.H.x[0], h[2], c1);	c += c1;
+	R.H.x[0] = uaddCarry(R.H.x[0], h[4], c1);	c += c1;
+	R.H.x[0] = uaddCarry(R.H.x[0], l[7], c1);	c += c1;
+	R.H.x[0] = uaddCarry(R.H.x[0], h[6], c1);	c += c1;
+
+	R.H.x[1] = uaddCarry(h[5], c, c1);	c = c1;
+	R.H.x[1] = uaddCarry(R.H.x[1], l[8], c1);	c += c1;
+	R.H.x[1] = uaddCarry(R.H.x[1], h[7], c1);	c += c1;
+	R.H.x[2] = uaddCarry(h[8], c, c1);
+}
+
+
+// Floating point version
+void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
+	uint192 X, XX, Y;
+	uint96 D;
+
+	Mul192(A, A, X);
+	if (doshift) {
+		Lsh(X);
+	}
+
+	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
+
+	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
+	// Always guess D a little low, and refine our guess as we get closer.
+	// normally takes 2 passes.
+	//
+	while (i < 5 && Cmp(X, Q) > 0) {
+		double xqi = toF(X)*qinv;
+		//double xqi = toF(X)/qinv;
+		fto96(xqi, D);
+		if (Zero(D)) {
+			D.x[0] = 1;
+		}
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+		i++;
+	}
+	A = X.L;
+}
+
+
+bool tf(uint96 k, uint p[2], int top, uint oo) {
+	uint96 sq, q, pp;
+	uint192 t;
+
+	// q = 2 * p * k + 1
+	pp.x = uvec3(p[0], p[1], 0);
+	Mul192(k, pp, t);
+	q = t.L;  // q is limited to 96-bits
+	Lsh(q);
+	Inc(q);
+
+        // Make our 1/q just a tiny bit too small, so we don't over estimate,
+        // but not so small as to need extra passes.
+	double qinv = 0.99999999999999 / toF(q);
+	//double qinv =  toF(q) / 0.99999999999999;
+	//double qinv = 0.9999999999999994 / toF(q);
+	//double qinv = 1.0 / toF(q);
+
+	// Do the TF math: Starting with 1, repeatedly square,
+	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
+	//  then compute mod Q.
+	sq.x = uvec3(1, 0, 0);
+	for (int b = top; b >= 0; b--) {
+		bool bb;
+		if (b < 32) {
+			bb = (p[0] & (1 << b)) != 0;
+		} else {
+			bb = (p[1] & (1 << (b-32))) != 0;
+		}
+		SqMod(sq, q, bb, qinv);
+	}
+	// If the result is 1, then we found a factor.
+	return sq.x[0] == 1 && sq.x[1] == 0 && sq.x[2] == 0;
+}
+
+void main() {
+	uint I = gl_GlobalInvocationID.x;
+	if (Init == 0) {
+		while (true) {
+			uint i = atomicAdd(L, 1);
+			if (i >= Ll) {
+				return;
+			}
+			Listx[i] = List[i];
+			if (i < M2) {
+				X2x[i] = X2[i] == 1;
+			}
+		}
+	}
+	//
+	// K is the base starting value for this invocation. 
+	//
+	uint96 k;
+	k.x = uvec3(K[0], K[1], K[2]);
+
+	while (true) {
+
+		uint i = atomicAdd(L, 1);
+		if (i >= Ll) {
+			return;
+		}
+		uint o = Listx[i];
+		uint96 oo;
+
+		if (X2x[(o + KmodM2)%M2] == false) {
+			//uint x = atomicAdd(Debug[0], 1);
+			continue;
+		}
+
+		oo.x = uvec3(o, 0, 0);
+
+		// the actual K this thread will test.
+		Add(k, oo);
+
+		// check if something went terribly wrong above.
+		// We didn't find a K to test at all?
+		if (Zero(k)) {return;}
+		//return;
+		
+		int top;
+		if (P[1] == 0) {
+			top = int(findMSB(P[0]));
+		} else {
+			top = 32 + int(findMSB(P[1]));
+		}
+
+		if (tf(k, P, top, i)) {
+			// How many have we found?
+			uint f = atomicAdd(Debug[1], 1);
+			// return the 96-bit K
+			Found[f][0] = k.x[0];
+			Found[f][1] = k.x[1];
+			Found[f][2] = k.x[2];
+		}
+		return;
+	}
+}
