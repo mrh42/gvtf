@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"math"
 	//"runtime"
-	//"os"
+	"os"
 	//"time"
 	//"bufio"
 	//"strings"
-	//"strconv"
+	"strconv"
 	//"math/big"
 	//"encoding/json"
 )
@@ -16,6 +16,28 @@ import (
 //#cgo LDFLAGS: -lm -lvulkan
 //#include "tf.h"
 import "C"
+
+func parseint(s string) uint64 {
+	i, _ := strconv.ParseInt(s, 10, 64)
+	return uint64(i)
+}
+
+func mklist(p, m, n1, n2 uint64) ([]uint32) {
+
+	list := make([]uint32, C.ListLen)
+	x := 0
+	for i := n1; i < n2; i++ {
+		q := uint64(p % m) * 2 * i + 1
+		if (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) || (q%5 == 0) || (q%7 == 0) || (q%11 == 0) ||
+		    (q%13 == 0) || (q%17 == 0) || (q%19 == 0) || (q%23 == 0)) {
+			//
+		} else {
+			list[x] = uint32(i)
+			x = x + 1
+		}
+	}
+	return list
+}
 
 func initInput(P, K1 uint64) {
 	p := C.mrhGetMap();
@@ -34,47 +56,20 @@ func initInput(P, K1 uint64) {
 	}
 	p.Debug[0] = 0
 	p.Debug[1] = 0
+
 	p.Init = 0
-
-	for i := uint64(0); i < C.M2; i++ {
-		q := uint64(P % C.M2) * 2 * i + 1
-		if ((q % 29) == 0 ||(q % 31) == 0 ||(q % 37) == 0||(q % 41) == 0 || (q % 43) == 0) {
-			p.X2[i] = 0
-		} else {
-			p.X2[i] = 1
-		}
-	}
-	//
-	// This takes a second or so on the cpu, but is so much easier with 64bit ints.
-	//
-	ones := 0
-	for i := uint64(0); i < C.M; i++ {
-		q := uint64(P % C.M) * 2 * i + 1
-		if (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) || (q%5 == 0) || (q%7 == 0) || (q%11 == 0) ||
-		    (q%13 == 0) || (q%17 == 0) || (q%19 == 0) || (q%23 == 0)) {
-			//Kx[i] = 0;
-		} else {
-			p.List[ones] = C.uint(i)
-			ones++
-			if (ones > C.ListLen) {
-				fmt.Printf("Error: list longer than expected: %d.  %d isn't prime??\n", ones, P)
-				break
-			}
-		}
-	}
-	fmt.Printf("ones: %d\n", ones)
-	p.L = 0;
-	p.Ll = C.uint(ones)
-
+	p.L = 0
+	p.Ll = 0
 	C.runCommandBuffer()
+	fmt.Printf("P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+
 	p.L = 0
 	p.Init = 1
-
 	
 	C.mrhUnMap();
 }
 
-func tfRun(P, K1 uint64) {
+func tfRun(P, K1 uint64, bitlimit float64) {
 	K1 = C.M * (K1/C.M);
 	p := C.mrhGetMap();
 
@@ -88,7 +83,7 @@ func tfRun(P, K1 uint64) {
 		C.runCommandBuffer()
 
 		lb2 := math.Log2(float64(k64) * float64(P) * 2.0)
-		if lb2 > 68 {
+		if lb2 > bitlimit {
 			mrhDone = true
 		}
 		for i := 0; i < 10; i++ {
@@ -126,16 +121,15 @@ func tfRun(P, K1 uint64) {
 }
 
 func main() {
-	fmt.Printf("Hello\n")
 	//runtime.LockOSThread()
 
+	P := parseint(os.Args[1])
+	B := parseint(os.Args[2])
 	r := C.tfVulkanInit()
 	if r == 0 {
-		initInput(4112322971, 1);
-		//C.mrhInit(4112322971, 1)
-
-		//C.mrhRun(4112322971, 1);
-		tfRun(4112322971, 1);
+		initInput(P, 1);
+		fmt.Printf("init done\n")
+		tfRun(P, 1, float64(B));
 	}
 	C.cleanup()
 }

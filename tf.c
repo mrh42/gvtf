@@ -33,12 +33,6 @@ uint32_t queueFamilyIndex;
 //
 const int np = 1024*1024*16;
 
-
-//uint64_t K1;
-//uint64_t P;
-double bitlimit = 68;
-uint64_t kfound[100];
-
 void createInstance() {
         VkApplicationInfo applicationInfo = {};
         applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -544,147 +538,6 @@ void mrhUnMap()  {
 	vkUnmapMemory(device, bufferMemory);
 }
 
-/*
-void mrhInit(uint64_t P, uint64_t K1) {
-	void* mappedMemory = NULL;
-	vkMapMemory(device, bufferMemory, 0, bufferSize, 0, &mappedMemory);
-	struct Stuff *p = (struct Stuff *) mappedMemory;
-	//printf("--K: %ld\n", K1);
-	K1 = M * (K1/M);
-	//printf("++K: %ld\n", K1);
-	p->K[0] = K1 & 0xffffffff;
-	p->K[1] = (K1>>32) & 0xffffffff;
-	p->K[2] = 0;
-	p->P[0] = P & 0xffffffff;
-	p->P[1] = (P>>32) & 0xffffffff;
-	for (int i = 0; i < 10; i++) {
-		p->Found[i][0] = 0;
-		p->Found[i][1] = 0;
-		p->Found[i][2] = 0;
-	}
-	p->Debug[0] = p->Debug[1] = 0;
-	p->Init = 0;
-
-	for (uint64_t i = 0; i < M2; i++) {
-		uint64_t q = ((uint64_t)(P % M2)) * 2 * i + 1;
-		if ((q % 29) == 0 ||(q % 31) == 0 ||(q % 37) == 0||(q % 41) == 0 || (q % 43) == 0) {
-			p->X2[i] = 0;
-		} else {
-			p->X2[i] = 1;
-		}
-	}
-
-	//
-	// This takes a second or so on the cpu, but is so much easier with 64bit ints.
-	//
-	unsigned int ones = 0;
-	for (uint64_t i = 0; i < M; i++) {
-		uint64_t q = ((uint64_t)(P % M)) * 2 * i + 1;
-		if (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) || (q%5 == 0) || (q%7 == 0) || (q%11 == 0) ||
-		    (q%13 == 0) || (q%17 == 0) || (q%19 == 0) || (q%23 == 0)) {
-			//Kx[i] = 0;
-		} else {
-			p->List[ones] = i;
-			ones++;
-			if (ones > ListLen) {
-				printf("Error: list longer than expected: %d.  %ld isn't prime??\n", ones, P);
-				exit(1);
-			}
-		}
-	}
-	p->L = 0;
-	p->Ll = ones;
-	//printf("init: %d - %0.3f sieved\n", ones, double(ones)/M);
-	//exit(1);
-	runCommandBuffer();  // initialize some shader stuff
-	//printf("init done\n");
-
-	p->Init = 1;         // now we are done.
-	p->L = 0;
-
-	vkUnmapMemory(device, bufferMemory);
-}
-
-void mrhRun(uint64_t P, uint64_t K1) {
-	uint32_t mrhDone = 0;
-	void* mappedMemory = NULL;
-	vkMapMemory(device, bufferMemory, 0, bufferSize, 0, &mappedMemory);
-	struct Stuff *p = (struct Stuff *) mappedMemory;
-
-	K1 = M * (K1/M);
-
-	uint64_t t = M * (P%M) * 2;
-	printf("M * PmodM * 2 = %lx\n", t);
-	uint64_t k64 = K1;
-	int calls = 0;
-	int found = 0;
-	while (1) {
-		
-		struct timeval t1, t2;
-		gettimeofday(&t1, NULL);
-
-		p->Debug[0] = 0;
-		p->Debug[1] = 0;
-		//printf("K mod M2: %ld\n", k64 % M2);
-		p->KmodM2 = (uint32_t)(k64 % M2);
-		runCommandBuffer();
-		p->Init++;
-		calls++;
-
-		gettimeofday(&t2, NULL);
-		double elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;
-		elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;
-
-		double dk64 = k64;
-		double dP = P;
-		double lb2 = log2(dk64 * dP * 2.0);
-		if (lb2 > bitlimit) {
-			mrhDone = 1;
-		}
-
-		for (int i = 0; i < 10; i++) {
-			uint64_t f64 = p->Found[i][1];
-			f64 <<= 32;
-			f64 |= p->Found[i][0];
-			if (f64) {
-				kfound[found++] = f64;
-
-				double flb2 = log2((double)f64 * dP * 2.0);
-				printf("# %ld kfactor %ld E: %d D: %d %.1f\n", P, f64, p->Debug[0], p->Debug[1], flb2);
-
-				p->Found[i][0] = 0;
-				p->Found[i][1] = 0;
-				//mrhDone = 1;
-			}
-		}
-
-		if (mrhDone) {
-			time_t t ;
-			time(&t);
-			printf("%ld %ld %ld %.2f %d ", P, t, k64, bitlimit, found);
-			for (int i = 0; i < found; i++) {
-				printf("%ld ", kfound[i]);
-			}		       
-			printf("\n");
-			break;
-		}
-
-		if (p->L >= p->Ll) {
-			k64 += M;
-			p->K[0] = (k64) & 0xffffffff;
-			p->K[1] = (k64)>>32;
-			p->K[2] = 0;
-
-			p->L = 0;
-			p->Debug[0] = p->Debug[1] = 0;
-			p->Init = 1;
-		}
-						       
-    
-	}
-}
-*/
-
 int tfVulkanInit() {
 	bufferSize = sizeof(struct Stuff);
 	bufferSize2 = sizeof(struct Stuff2);
@@ -702,8 +555,4 @@ int tfVulkanInit() {
 
 	createCommandBuffer();
 	return 0;
-
-	//mrhInit();
-	//mrhRun();
-	//cleanup();
 }
