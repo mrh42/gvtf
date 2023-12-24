@@ -13,11 +13,11 @@
 // This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
 // it is somewhat slow, compared to DEVICE_LOCAL memory.
 struct Stuff {
-	uint64_t    P;     // 64 bit
-	uint32_t    K[3];  // 96, but only 64 used currently  XXX
-	uint32_t    Found[10][3];
-	uint32_t    Debug[2];
-	uint32_t    Init;
+	uint64_t    P;            // 64 bit
+	uint32_t    K[3];         // 96, but only 64 used currently  XXX
+	uint32_t    Found[10][3]; // up to 10 96-bit K values
+	uint32_t    Debug[2];     // debugging passed back from the gpu
+	uint32_t    Init;         // controls the code path in main(), 0 causes initialization of the Stuff2 tables.
 	uint32_t    L;            // start with 0, each thread will increment with AtomicAdd(L, 1)  
 	uint32_t    Ll;           // ListLen, when L >= Ll, threads will return.
 	uint32_t    KmodM2;
@@ -26,8 +26,8 @@ struct Stuff {
 // This is allocated in DEVICE_LOCAL memory, and is not shared with host.
 // This is much to access faster from the shader, especially if the GPU is in a PCIx1 slot.
 struct Stuff2 {
-	uint32_t    Listx[ListLen];  // copy of List.  Just a tiny speed up.
-	uint32_t    X2x[M2];
+	uint32_t    List[ListLen];
+	uint32_t    X2[M2];
 };
 
 

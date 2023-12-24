@@ -313,7 +313,7 @@ bool tf(uint96 k, uint oo) {
 }
 
 void main() {
-	uint I = gl_GlobalInvocationID.x;
+	//uint I = gl_GlobalInvocationID.x;
 	if (Init == 0) {
 		while (true) {
 			uint i = atomicAdd(L, 1);
@@ -323,15 +323,22 @@ void main() {
 			}
 			uint64_t p64 = P;
 			uint64_t q = (p64) * 2 * i + 1;
-			bool x = (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) || (q%5 == 0) || (q%7 == 0) || (q%11 == 0) || (q%13 == 0) || (q%17 == 0) || (q%19 == 0) || (q%23 == 0));
+			bool x = (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) ||
+				  (q%5 == 0) || (q%7 == 0) || (q%11 == 0) || (q%13 == 0) ||
+				  (q%17 == 0) || (q%19 == 0) || (q%23 == 0));
 			if (!x) {
 				uint o = atomicAdd(Ll, 1);
 				List[o] = i;
 			}
+			//
+			// this table allows a 12% speedup later
+			//
 			if (i < M2) {
-				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||(q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
+				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||
+					    (q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
 			}
 		}
+		// no threads reach here.
 	}
 	//
 	// K is the base starting value for this invocation. 
@@ -340,7 +347,7 @@ void main() {
 	k.x = uvec3(K[0], K[1], K[2]);
 
 	while (true) {
-
+		// get the next index from the List to test
 		uint i = atomicAdd(L, 1);
 		if (i >= Ll) {
 			return;
@@ -348,11 +355,16 @@ void main() {
 		uint o = List[i];
 		uint96 oo;
 
+		//
+		// this test gives a speedup of about 12%.
+		// the mod M2 is fairly expensive
+		//
 		if (X2[(o + KmodM2)%M2] == false) {
 			//uint x = atomicAdd(Debug[0], 1);
 			continue;
 		}
 
+		// offset from the base K
 		oo.x = uvec3(o, 0, 0);
 
 		// the actual K this thread will test.
