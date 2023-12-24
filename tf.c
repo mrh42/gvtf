@@ -309,6 +309,7 @@ void createDescriptorSet() {
         // perform the update of the descriptor set.
         vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, NULL);
 }
+
 // Read file into array of bytes, and cast to uint32_t*, then return.
 // The data has been padded, so that it fits into an array uint32_t.
 uint32_t* readFile(uint32_t *length, const char* filename) {
