@@ -98,7 +98,7 @@ func tfRun(P, K1 uint64) {
 			if f64 != 0 {
 				kfound = append(kfound, f64)
 				flb2 := math.Log2(float64(f64) * float64(P) * 2.0)
-				fmt.Printf("# %ld kfactor %ld E: %d D: %d %.1f\n", P, f64, p.Debug[0], p.Debug[1], flb2);
+				fmt.Printf("# %d kfactor %d E: %d D: %d %.1f\n", P, f64, p.Debug[0], p.Debug[1], flb2);
 
 				p.Found[i][0] = 0;
 				p.Found[i][1] = 0;
@@ -134,7 +134,8 @@ func main() {
 		initInput(4112322971, 1);
 		//C.mrhInit(4112322971, 1)
 
-		C.mrhRun(4112322971, 1);
+		//C.mrhRun(4112322971, 1);
+		tfRun(4112322971, 1);
 	}
 	C.cleanup()
 }

@@ -604,7 +604,7 @@ void mrhInit(uint64_t P, uint64_t K1) {
 
 	vkUnmapMemory(device, bufferMemory);
 }
-*/
+
 void mrhRun(uint64_t P, uint64_t K1) {
 	uint32_t mrhDone = 0;
 	void* mappedMemory = NULL;
@@ -683,7 +683,7 @@ void mrhRun(uint64_t P, uint64_t K1) {
     
 	}
 }
-
+*/
 
 int tfVulkanInit() {
 	bufferSize = sizeof(struct Stuff);
