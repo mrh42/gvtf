@@ -76,7 +76,9 @@ func initInput(P uint64) {
 	p.L = 0
 	p.Ll = 0
 	C.runCommandBuffer()
-	fmt.Fprintf(os.Stderr, "init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+	if p.Ll != C.ListLen {
+		fmt.Fprintf(os.Stderr, "-------- init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+	}
 
 	p.L = 0
 	p.Init = 1
@@ -116,6 +118,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 	p.K[1] = C.uint(u32n(K, 1))
 	p.K[2] = C.uint(u32n(K, 2))
 
+
 	p.L = 0
 	p.Init = 1
 	for i := 0; i < 10; i++ {
@@ -138,6 +141,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 
 		fk64, _ := K.Float64()
 		lb2 := math.Log2(fk64 * float64(P) * 2.0)
+		//fmt.Printf("lb2: %d %f %f\n", K, lb2, bitlimit)
 		if lb2 > bitlimit {
 			mrhDone = true
 		}
@@ -148,10 +152,11 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 				if f64 > 0 {
 					kfound = append(kfound, f)
 					flb2 := math.Log2(f64 * float64(P) * 2.0)
-					fmt.Fprintf(os.Stderr, "# %d kfactor %d E: %d D: %d %.1f\n", P, f, p.Debug[0], p.Debug[1], flb2);
+					fmt.Fprintf(os.Stderr, "# %d kfactor %d E: %d D: %d %.4f\n", P, f, p.Debug[0], p.Debug[1], flb2);
 
 					p.Found[i][0] = 0;
 					p.Found[i][1] = 0;
+					p.Found[i][2] = 0;
 					//mrhDone = 1;
 				}
 			}
@@ -216,7 +221,7 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 	out.User = "mrh"
 	out.Computer = "h0"
 	out.Rangec = true
-	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.2"}
+	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.3"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
 }

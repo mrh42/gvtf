@@ -31,7 +31,7 @@ uint32_t queueFamilyIndex;
 //
 // total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
 //
-const int np = 1024*1024*8;
+const int np = 1024*1024*16;
 
 void createInstance() {
         VkApplicationInfo applicationInfo = {};
@@ -70,7 +70,7 @@ int findPhysicalDevice() {
 	VkPhysicalDevice devices[32];
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices);
 
-	fprintf(stderr, "devices: %d\n", deviceCount);
+	//fprintf(stderr, "devices: %d\n", deviceCount);
 	if (deviceCount > 0) {
 		// XXX: mrh choose device, not just 0
 		physicalDevice = devices[0];
@@ -89,7 +89,7 @@ uint32_t getComputeQueueFamilyIndex() {
 	
         vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies);
 
-	fprintf(stderr, "queueFamilyCount: %d\n", queueFamilyCount);
+	//fprintf(stderr, "queueFamilyCount: %d\n", queueFamilyCount);
         // Now find a family that supports compute.
 
 	uint32_t i = 0;
