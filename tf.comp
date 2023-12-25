@@ -28,10 +28,8 @@
 #define ListN 72990720
 layout (local_size_x = 64) in;
 
-// for speed, we only have space to return one found factor.  In the case of P with multiple close factors,
-// which could be found in the same invocation, these will write over each other.  Since we might have 512K threads
-// looking at hundreds of factors each, we don't want to allocate memory to avoid this.  So we'll learn of a
-// factor, but not all of the found factors.
+// This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
+// it is somewhat slow, compared to DEVICE_LOCAL memory.
 layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
