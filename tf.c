@@ -63,17 +63,19 @@ void createInstance() {
 	}
 }
 
-int findPhysicalDevice() {
+int findPhysicalDevice(int d) {
         uint32_t deviceCount = 32;
 
         //std::vector<VkPhysicalDevice> devices(deviceCount);
 	VkPhysicalDevice devices[32];
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices);
 
-	//fprintf(stderr, "devices: %d\n", deviceCount);
+	fprintf(stderr, "mrhdebug---num devices: %d\n", deviceCount);
 	if (deviceCount > 0) {
-		// XXX: mrh choose device, not just 0
-		physicalDevice = devices[0];
+		if (d > deviceCount-1) {
+			d = deviceCount-1;
+		}
+		physicalDevice = devices[d];
 	}
 	return deviceCount;
 }
@@ -539,13 +541,13 @@ void mrhUnMap()  {
 	vkUnmapMemory(device, bufferMemory);
 }
 
-int tfVulkanInit(int bs1, int bs2) {
+int tfVulkanInit(int devn, int bs1, int bs2) {
 	bufferSize = bs1;
 	bufferSize2 = bs2;
 
         // Initialize vulkan:
 	createInstance();
-	int devices = findPhysicalDevice();
+	int devices = findPhysicalDevice(devn);
 	if (devices == 0) {return -1;}
         createDevice();
         createBuffer();

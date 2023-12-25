@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"flag"
 	//"runtime"
 	"os"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"encoding/json"
 )
 
-//#cgo LDFLAGS: -lm -lvulkan
+//#cgo LDFLAGS: -L. -lm -lvulkan
 //#include "tf.h"
 import "C"
 
@@ -70,7 +71,7 @@ func initInput(P uint64) {
 	//p := C.mrhGetMap();
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 	
-	p.P = C.ulong(P)
+	p.P = C.uint64_t(P)
 
 	p.Init = 0
 	p.L = 0
@@ -227,17 +228,23 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 }
 
 func main() {
+	P := flag.Uint64("exponent", 4112322971, "The exponent to test")
+	devn := flag.Int("devn", 0, "Vulkan device number to use")
+	k1 := flag.String("k1", "1", "Starting K value")
+	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
+	flag.Parse()
 	//runtime.LockOSThread()
 	K1 := new(big.Int)
 
-	P := parseint(os.Args[1])
-	K1.SetString(os.Args[2], 10)
-	B2 := parsef(os.Args[3])
+	//P := parseint(os.Args[1])
+	//devn := parseint(os.Args[2])
+	//B2 := parsef(os.Args[4])
 
-	r := C.tfVulkanInit(C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
+	K1.SetString(*k1, 10)
+	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
 	if r == 0 {
-		initInput(P);
-		tfRun(P, K1, B2);
+		initInput(*P);
+		tfRun(*P, K1, *B2);
 	}
 	C.cleanup()
 }

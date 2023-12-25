@@ -31,7 +31,7 @@ struct Stuff2 {
 };
 
 
-int tfVulkanInit(int bs1, int bs2);
+int tfVulkanInit(int devn, int bs1, int bs2);
 void runCommandBuffer();
 void mrhInit(uint64_t P, uint64_t K1);
 void mrhRun(uint64_t P, uint64_t K1);
