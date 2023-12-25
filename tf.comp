@@ -286,7 +286,9 @@ bool tf(uint96 k, uint oo) {
 
 	int top = int(findMSB(P));
 	// q = 2 * p * k + 1
-	pp.x = uvec3(P & 0xffffffff, P >> 32, 0);
+	uint p0 = uint(P);      // lower 32-bits
+	uint p1 = uint(P>>32);  // upper 32-bits
+	pp.x = uvec3(p0, p1, 0);
 	Mul192(k, pp, t);
 	q = t.L;  // q is limited to 96-bits
 	Lsh(q);
@@ -302,10 +304,11 @@ bool tf(uint96 k, uint oo) {
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
 	//  then compute mod Q.
+	uint64_t one = 1L;
 	sq.x = uvec3(1, 0, 0);
 	for (int b = top; b >= 0; b--) {
 		bool bb;
-		bb = (P & (1 << b)) != 0;
+		bb = (P & (one << b)) != 0;
 		SqMod(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
