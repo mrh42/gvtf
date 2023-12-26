@@ -7,7 +7,7 @@ import (
 	//"runtime"
 	"os"
 	"time"
-	//"bufio"
+	"sort"
 	//"strings"
 	"strconv"
 	"math/big"
@@ -198,6 +198,9 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 
 	P := big.NewInt(int64(p))
 	One := big.NewInt(1)
+	sort.Slice(kfactors, func(i, j int) bool {
+		return kfactors[i].Cmp(kfactors[j]) < 0
+	})
 	factors := make([]*big.Int, 0, len(kfactors))
 	for _, k := range kfactors {
 		F := new(big.Int)
@@ -207,6 +210,7 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 		factors = append(factors, F)
 	}
 	sfactors := removecomp(factors)
+
 	out := &Jtf{}
 	if len(sfactors) > 0 {
 		out.Factors = sfactors
