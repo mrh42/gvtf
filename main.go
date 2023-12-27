@@ -6,6 +6,7 @@ import (
 	"flag"
 	//"runtime"
 	"os"
+	"os/user"
 	"time"
 	"sort"
 	//"strings"
@@ -78,7 +79,7 @@ func initInput(P uint64) {
 	p.Ll = 0
 	C.runCommandBuffer()
 	if p.Ll != C.ListLen {
-		fmt.Fprintf(os.Stderr, "-------- init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+		fmt.Fprintf(os.Stderr, "-------- Something went wrong during init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
 	}
 
 	p.L = 0
@@ -131,6 +132,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 	M2 := big.NewInt(C.M2)
 	kfound := make([]*big.Int, 0, 10)
 	mrhDone := false
+	count := 0
 	for {
 		p.Debug[0] = 0
 		p.Debug[1] = 0
@@ -142,7 +144,10 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 
 		fk64, _ := K.Float64()
 		lb2 := math.Log2(fk64 * float64(P) * 2.0)
-		//fmt.Printf("lb2: %d %f %f\n", K, lb2, bitlimit)
+		count++
+		if (count % 2000) == 0 {
+			fmt.Fprintf(os.Stderr, "# %f %f\n", lb2, bitlimit)
+		}
 		if lb2 > bitlimit {
 			mrhDone = true
 		}
@@ -223,8 +228,9 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 	out.Endk = K2
 	out.Bitlo = int64(bitlo)
 	out.Bithi = int64(bithi)
-	out.User = "mrh"
-	out.Computer = "h0"
+	u, _ := user.Current()
+	out.User = u.Username
+	out.Computer, _ = os.Hostname()
 	out.Rangec = true
 	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.3"}
 	o, _ := json.Marshal(out)
