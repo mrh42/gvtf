@@ -4,10 +4,10 @@
 //#extension GL_ARB_gpu_shader_int64 : enable
 //#extension GL_EXT_debug_printf : enable
 //#extension GL_KHR_shader_subgroup_vote : enable
-//#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
 //#extension GL_EXT_shader_explicit_arithmetic_types_int16 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
-//#extension GL_EXT_shader_atomic_int64: enable
+#extension GL_EXT_shader_atomic_int64: enable
 
 //
 // compile this file into SPIR-V with:
@@ -23,9 +23,10 @@
 // also, maybe the difference isn't so much when not using uint64_t math.
 //
 #define M (4 * 3L * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
-#define M2 (29 * 31 * 37 * 41 * 43)
+#define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
 
 #define ListN 72990720
+//#define ListN 2043740170
 layout (local_size_x = 64) in;
 
 // This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
@@ -33,13 +34,13 @@ layout (local_size_x = 64) in;
 layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
-	uint        K[3];       // base K input from CPU side
-	uint        Found[10][3];   // output to tell the CPU we found a K resulting in a factor
-	uint        Debug[2];   // output only used for debugging
 	uint        Init;       // If this is 0, then we setup our tables once.
 	uint        L;
 	uint        Ll;          // Length of List
 	uint        KmodM2;
+	uint64_t    K[2];       // base K input from CPU side
+	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
+	uint        Debug[2];   // output only used for debugging
 };
 
 
@@ -278,7 +279,7 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 }
 
 
-bool tf(uint96 k, uint oo) {
+bool tf(uint96 k) {
 	uint96 sq, q, pp;
 	uint192 t;
 
@@ -345,7 +346,7 @@ void main() {
 	// K is the base starting value for this invocation. 
 	//
 	uint96 k;
-	k.x = uvec3(K[0], K[1], K[2]);
+	k.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
 
 	while (true) {
 		// get the next index from the List to test
@@ -376,13 +377,13 @@ void main() {
 		if (Zero(k)) {return;}
 		//return;
 		
-		if (tf(k, i)) {
+		if (tf(k)) {
 			// How many have we found?
 			uint f = atomicAdd(Debug[1], 1);
 			// return the 96-bit K
-			Found[f][0] = k.x[0];
-			Found[f][1] = k.x[1];
-			Found[f][2] = k.x[2];
+			Found[f][0] = k.x[0] | uint64_t(k.x[1]) << 32;
+			Found[f][1] = k.x[2];
+			//Found[f][2] = k.x[2];
 		}
 		return;
 	}

@@ -70,7 +70,7 @@ int findPhysicalDevice(int d) {
 	VkPhysicalDevice devices[32];
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices);
 
-	//fprintf(stderr, "mrhdebug---num devices: %d\n", deviceCount);
+	fprintf(stderr, "mrhdebug---num devices: %d\n", deviceCount);
 	if (deviceCount > 0) {
 		if (d > deviceCount-1) {
 			d = deviceCount-1;
@@ -172,7 +172,8 @@ void createBuffer() {
         VkMemoryAllocateInfo allocateInfo = {};
         allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocateInfo.allocationSize = memoryRequirements.size; // specify required memory.
-        allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        //allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
         res = vkAllocateMemory(device, &allocateInfo, NULL, &bufferMemory);
 	if (res != VK_SUCCESS) {
@@ -541,7 +542,7 @@ void mrhUnMap()  {
 	vkUnmapMemory(device, bufferMemory);
 }
 
-int tfVulkanInit(int devn, int bs1, int bs2) {
+int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2) {
 	bufferSize = bs1;
 	bufferSize2 = bs2;
 

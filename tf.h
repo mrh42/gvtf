@@ -9,18 +9,18 @@
 #define M (4 * 3L * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                  //  58,642,669
 #define ListLen 72990720
-
+//#define ListLen 2043740170
 // This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
 // it is somewhat slow, compared to DEVICE_LOCAL memory.
 struct Stuff {
 	uint64_t    P;            // 64 bit
-	uint32_t    K[3];         // 96, but only 64 used currently  XXX
-	uint32_t    Found[10][3]; // up to 10 96-bit K values
-	uint32_t    Debug[2];     // debugging passed back from the gpu
 	uint32_t    Init;         // controls the code path in main(), 0 causes initialization of the Stuff2 tables.
 	uint32_t    L;            // start with 0, each thread will increment with AtomicAdd(L, 1)  
 	uint32_t    Ll;           // ListLen, when L >= Ll, threads will return.
 	uint32_t    KmodM2;
+	uint64_t    K[2];         // 96, but only 64 used currently  XXX
+	uint64_t    Found[10][2]; // up to 10 96-bit K values
+	uint32_t    Debug[2];     // debugging passed back from the gpu
 
 };
 // This is allocated in DEVICE_LOCAL memory, and is not shared with host.
@@ -31,10 +31,10 @@ struct Stuff2 {
 };
 
 
-int tfVulkanInit(int devn, int bs1, int bs2);
+int tfVulkanInit(int devn, int64_t bs1, int64_t bs2);
 void runCommandBuffer();
-void mrhInit(uint64_t P, uint64_t K1);
-void mrhRun(uint64_t P, uint64_t K1);
+//void mrhInit(uint64_t P, uint64_t K1);
+//void mrhRun(uint64_t P, uint64_t K1);
 void cleanup();
 
 //struct Stuff * mrhGetMap();

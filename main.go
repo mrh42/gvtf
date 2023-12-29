@@ -88,6 +88,17 @@ func initInput(P uint64) {
 	C.mrhUnMap()
 }
 
+func u64n(N *big.Int, pos uint) uint64 {
+	one := big.NewInt(1)
+	m64 := big.NewInt(1)
+	m64.Lsh(m64, 64)
+	m64.Sub(m64, one)
+
+	R := new(big.Int)
+	R.Rsh(N, pos * 64)
+	R.And(R, m64)
+	return R.Uint64()
+}
 func u32n(N *big.Int, pos uint) uint32 {
 	m32 := big.NewInt(0xffffffff)
 
@@ -106,6 +117,15 @@ func big3(u0, u1, u2 C.uint) *big.Int {
 	f.Or(f, f0)
 	return f
 }
+func big2(u0, u1 C.uint64_t) *big.Int {
+	f := new(big.Int)
+	f.SetUint64(uint64(u1))
+	f.Lsh(f, 64)
+	f1 := new(big.Int)
+	f.SetUint64(uint64(u0))
+	f.Or(f, f1)
+	return f
+}
 
 func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
@@ -116,9 +136,9 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 	K.Div(K1, M)
 	K.Mul(K, M)
 
-	p.K[0] = C.uint(u32n(K, 0))
-	p.K[1] = C.uint(u32n(K, 1))
-	p.K[2] = C.uint(u32n(K, 2))
+	p.K[0] = C.uint64_t(u64n(K, 0))
+	p.K[1] = C.uint64_t(u64n(K, 1))
+	//p.K[2] = C.uint(u32n(K, 2))
 
 
 	p.L = 0
@@ -126,7 +146,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
 		p.Found[i][1] = 0
-		p.Found[i][2] = 0
+		//p.Found[i][2] = 0
 	}
 
 	M2 := big.NewInt(C.M2)
@@ -140,7 +160,10 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 		KmM2.Mod(K, M2)
 		//p.KmodM2 = C.uint(k64 % C.M2)
 		p.KmodM2 = C.uint(KmM2.Uint64())
+
+		//C.mrhUnMap();		
 		C.runCommandBuffer()
+		//p = (*C.struct_Stuff)(C.mrhGetMap());
 
 		fk64, _ := K.Float64()
 		lb2 := math.Log2(fk64 * float64(P) * 2.0)
@@ -153,7 +176,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 		}
 		if p.Debug[1] > 0 {
 			for i := 0; i < 10; i++ {
-				f := big3(p.Found[i][0], p.Found[i][1], p.Found[i][2])
+				f := big2(p.Found[i][0], p.Found[i][1])
 				f64, _ := f.Float64()
 				if f64 > 0 {
 					kfound = append(kfound, f)
@@ -162,7 +185,6 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 
 					p.Found[i][0] = 0;
 					p.Found[i][1] = 0;
-					p.Found[i][2] = 0;
 					//mrhDone = 1;
 				}
 			}
@@ -175,9 +197,8 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 		
 		if p.L >= p.Ll {
 			K.Add(K, M)
-			p.K[0] = C.uint(u32n(K, 0))
-			p.K[1] = C.uint(u32n(K, 1))
-			p.K[2] = C.uint(u32n(K, 2))
+			p.K[0] = C.uint64_t(u64n(K, 0))
+			p.K[1] = C.uint64_t(u64n(K, 1))
 
 			p.L = 0
 			p.Debug[0] = 0
