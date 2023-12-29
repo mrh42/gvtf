@@ -1,3 +1,9 @@
+compiling both GLSL versions into header files:
+
+glslangValidator --target-env spirv1.6 --vn spv32 -V tf.comp -o spv32.h
+glslangValidator --target-env spirv1.6 --vn spv64 -V tf64.comp -o spv64.h
+
+
 Cross-compile for windows on ubuntu.
 
 apt-get install gcc-mingw-w64

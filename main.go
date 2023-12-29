@@ -258,24 +258,40 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 	fmt.Println(string(o))
 }
 
+func nextP(p uint64) uint64 {
+
+	p += 2
+	P := new(big.Int)
+	for !P.SetUint64(p).ProbablyPrime(10) {
+		p++
+	}
+	return p
+}
+
 func main() {
-	P := flag.Uint64("exponent", 4112322971, "The exponent to test")
+
+	Pp := flag.Uint64("exponent", 4112322971, "The exponent to test")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
+	version := flag.Int("version", 32, "version of GPU code to use, 32 or 64-bit")
+	countp := flag.Int("count", 1, "number of exponents to test")
 	flag.Parse()
 	//runtime.LockOSThread()
+
+	count := *countp
+	P := *Pp
 	K1 := new(big.Int)
 
-	//P := parseint(os.Args[1])
-	//devn := parseint(os.Args[2])
-	//B2 := parsef(os.Args[4])
+	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version))
+	for ; count > 0; count-- {
+		K1.SetString(*k1, 10)
 
-	K1.SetString(*k1, 10)
-	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
-	if r == 0 {
-		initInput(*P);
-		tfRun(*P, K1, *B2);
+		if r == 0 {
+			initInput(P);
+			tfRun(P, K1, *B2);
+		}
+		P = nextP(P)
 	}
 	C.cleanup()
 }

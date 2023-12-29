@@ -4,7 +4,9 @@
 #include <math.h>
 #include <time.h>
 #include <sys/time.h>
-//#include "tf.h"
+#include "tf.h"
+#include "spv32.h"
+#include "spv64.h"
 
 VkInstance instance;
 VkDebugReportCallbackEXT debugReportCallback;
@@ -70,7 +72,7 @@ int findPhysicalDevice(int d) {
 	VkPhysicalDevice devices[32];
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices);
 
-	fprintf(stderr, "mrhdebug---num devices: %d\n", deviceCount);
+	//fprintf(stderr, "mrhdebug---num devices: %d\n", deviceCount);
 	if (deviceCount > 0) {
 		if (d > deviceCount-1) {
 			d = deviceCount-1;
@@ -345,24 +347,27 @@ uint32_t* readFile(uint32_t *length, const char* filename) {
         return (uint32_t *)str;
 }
 
-void createComputePipeline() {
+void createComputePipeline(const uint32_t *code, uint32_t codesize) {
         /*
         Create a shader module. A shader module basically just encapsulates some shader code.
         */
+	/*
         uint32_t filelength;
         // the code in comp.spv was created by running the command:
         // glslangValidator.exe -V shader.comp
         uint32_t* code = readFile(&filelength, "comp.spv");
+	*/
+
         VkShaderModuleCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         createInfo.pCode = code;
-        createInfo.codeSize = filelength;
+        createInfo.codeSize = codesize;
         
         VkResult res = vkCreateShaderModule(device, &createInfo, NULL, &computeShaderModule);
 	if (res != VK_SUCCESS) {
 		fprintf(stderr, "vkCreateShaderModule() = %d\n", res);
 	}
-        free(code);
+        //free(code);
 
         /*
         Now let us actually create the compute pipeline.
@@ -542,9 +547,24 @@ void mrhUnMap()  {
 	vkUnmapMemory(device, bufferMemory);
 }
 
-int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2) {
+int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	bufferSize = bs1;
 	bufferSize2 = bs2;
+
+	uint32_t codesize;
+	const uint32_t* code;
+
+	int needfree = 0;
+	if (version == 32) {
+		codesize = sizeof(spv32);
+		code = spv32;
+	} else if (version == 64) {
+		codesize = sizeof(spv64);
+		code = spv64;
+	} else {
+		needfree = 1;
+		code = readFile(&codesize, "comp.spv");
+	}
 
         // Initialize vulkan:
 	createInstance();
@@ -555,8 +575,10 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2) {
         createBuffer2();
         createDescriptorSetLayout();
         createDescriptorSet();
-        createComputePipeline();
+        createComputePipeline(code, codesize);
 
 	createCommandBuffer();
+
+	if (needfree) {free((void*)code);}
 	return 0;
 }

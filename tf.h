@@ -31,10 +31,8 @@ struct Stuff2 {
 };
 
 
-int tfVulkanInit(int devn, int64_t bs1, int64_t bs2);
+int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version);
 void runCommandBuffer();
-//void mrhInit(uint64_t P, uint64_t K1);
-//void mrhRun(uint64_t P, uint64_t K1);
 void cleanup();
 
 //struct Stuff * mrhGetMap();
