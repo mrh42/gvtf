@@ -7,8 +7,8 @@ For vulkan tools see: https://www.lunarg.com/vulkan-sdk/
 This version using a golang frontend, with some C-code helping functions.
 
      Usage of ./gvtf:
-     	   -bithi float
-	   	  bit limit to test to (default 68)
+           -bithi float
+	          bit limit to test to (default 68)
            -devn int
     	   	  Vulkan device number to use
            -exponent uint
