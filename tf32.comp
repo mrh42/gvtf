@@ -248,7 +248,7 @@ void Mul192(inout uint96 A, uint96 B, out uint192 R)
 }
 
 
-// Floating point version
+// 192-bit Floating point version
 void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	uint192 X, XX, Y;
 	uint96 D;
@@ -296,9 +296,6 @@ bool tf(uint96 k) {
         // Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
 	double qinv = 0.99999999999999 / toF(q);
-	//double qinv =  toF(q) / 0.99999999999999;
-	//double qinv = 0.9999999999999994 / toF(q);
-	//double qinv = 1.0 / toF(q);
 
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,

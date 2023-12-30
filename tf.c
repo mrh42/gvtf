@@ -325,6 +325,7 @@ uint32_t* readFile(uint32_t *length, const char* filename) {
         FILE* fp = fopen(filename, "rb");
         if (fp == NULL) {
             printf("Could not find or open file: %s\n", filename);
+	    return 0;
         }
 
         // get file size.
@@ -570,6 +571,7 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	} else {
 		needfree = 1;
 		code = readFile(&codesize, "comp.spv");
+		if (code == 0) {return -1;}
 	}
 
         // Initialize vulkan:

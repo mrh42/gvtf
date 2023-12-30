@@ -457,7 +457,7 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
 	A = X.L;
 }
-
+/*
 uint64_t Mod(uint64_t X, uint b, double qinv) {
 
 	int i = 0;
@@ -472,7 +472,7 @@ uint64_t Mod(uint64_t X, uint b, double qinv) {
 	if (X == b) {X = 0;}
 	return X;
 }
-
+*/
 
 bool tf(uint128 k) {
 	uint128 sq, q;
@@ -489,9 +489,6 @@ bool tf(uint128 k) {
         // Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
 	double qinv = 0.99999999999999 / toF(q);
-	//double qinv =  toF(q) / 0.99999999999999;
-	//double qinv = 0.9999999999999994 / toF(q);
-	//double qinv = 1.0 / toF(q);
 
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,

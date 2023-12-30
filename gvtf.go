@@ -263,6 +263,6 @@ func main() {
 	if r == 0 {
 		initInput(P);
 		tfRun(P, K1, *B2, *stop);
+		C.cleanup()
 	}
-	C.cleanup()
 }
