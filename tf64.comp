@@ -305,6 +305,8 @@ void Mul192x(uint128 A, uint128 B, out uint192 R) {
 	R.L.Hi = (n & lb) | (o << 32);
 	R.H = (o >> 32) + x22;
 }
+// something suspect with this one
+/*
 void Sq192x(uint128 A, out uint192 R) {
 	uint64_t lb = 0xfffffffful;
 	uint64_t alh = A.Lo >> 32;
@@ -324,6 +326,7 @@ void Sq192x(uint128 A, out uint192 R) {
 	R.L.Hi = (n & lb) | (o << 32);
 	R.H = (o >> 32) + x22;
 }
+*/
 void Mul192(uint128 A, uint128 B, inout uint192 X) {
 	X.H = A.Hi * B.Hi;
 	multiply64to128(A.Lo, B.Lo, X.L);
@@ -427,10 +430,8 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	uint192 X, Y;
 	uint128 D;
-	uint192 QQ;
-	QQ.H = 0; QQ.L.Lo = Q.Lo; QQ.L.Hi = Q.Hi;
 
-	Sq192x(A, X);
+	Sq192(A, X);
 	if (doshift) {
 		Lsh(X);
 	}
