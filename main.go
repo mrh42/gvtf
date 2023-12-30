@@ -270,28 +270,25 @@ func nextP(p uint64) uint64 {
 
 func main() {
 
+	// 4112322971, 6000003419, 6000003437, 6000003167
 	Pp := flag.Uint64("exponent", 4112322971, "The exponent to test")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
 	version := flag.Int("version", 32, "version of GPU code to use, 32 or 64-bit")
-	countp := flag.Int("count", 1, "number of exponents to test")
+	//countp := flag.Int("count", 1, "number of exponents to test")
 	flag.Parse()
 	//runtime.LockOSThread()
 
-	count := *countp
+	//count := *countp
 	P := *Pp
 	K1 := new(big.Int)
 
 	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version))
-	for ; count > 0; count-- {
-		K1.SetString(*k1, 10)
-
-		if r == 0 {
-			initInput(P);
-			tfRun(P, K1, *B2);
-		}
-		P = nextP(P)
+	K1.SetString(*k1, 10)
+	if r == 0 {
+		initInput(P);
+		tfRun(P, K1, *B2);
 	}
 	C.cleanup()
 }
