@@ -1,4 +1,4 @@
-gvtf: spv32.h spv64.h tf.c tf.h main.go
+gvtf: spv32.h spv64.h tf.c tf.h main.go go.mod
 	go build
 
 spv32.h: tf.comp
@@ -6,3 +6,7 @@ spv32.h: tf.comp
 
 spv64.h: tf64.comp
 	glslangValidator --target-env spirv1.6 --vn spv64 -V tf64.comp -o spv64.h
+
+go.mod:
+	go mod init
+	go mod tidy
