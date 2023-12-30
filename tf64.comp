@@ -396,7 +396,7 @@ void fto128(double f, out uint128 A) {
 	A.Lo = uint64_t(f - double(A.Hi) * p64);
 }
 
-// Floating point version
+// 245-bit Floating point version
 void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	uint256 X, Y;
 	uint128 D;
@@ -426,12 +426,13 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	//if (i > 3) {Debug[1]++;}
 	A = X.L;
 }
-// Floating point version
+// 192-bit Floating point version
 void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	uint192 X, Y;
 	uint128 D;
 
 	Sq192(A, X);
+	//Mul192(A, A, X);
 	if (doshift) {
 		Lsh(X);
 	}
