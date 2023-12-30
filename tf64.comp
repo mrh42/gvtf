@@ -498,7 +498,7 @@ bool tf(uint128 k) {
 	sq.Lo = 1; sq.Hi = 0;
 	for (int b = top; b >= 0; b--) {
 		bool bb = (P & (one << b)) != 0;
-		SqMod9(sq, q, bb, qinv);
+		SqModXX(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;

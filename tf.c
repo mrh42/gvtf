@@ -6,7 +6,8 @@
 #include <sys/time.h>
 #include "tf.h"
 #include "spv32.h"
-#include "spv64.h"
+#include "spv192.h"
+#include "spv256.h"
 
 VkInstance instance;
 VkDebugReportCallbackEXT debugReportCallback;
@@ -35,7 +36,7 @@ uint32_t queueFamilyIndex;
 //
 const int np = 1024*1024*8;
 
-void createInstance() {
+int createInstance() {
         VkApplicationInfo applicationInfo = {};
         applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         applicationInfo.pApplicationName = "Hello world app";
@@ -62,7 +63,9 @@ void createInstance() {
         VkResult res = vkCreateInstance(&createInfo, NULL, &instance);
 	if (res != VK_SUCCESS) {
 		fprintf(stderr, "vkCreateInstance() = %d\n", res);
+		return -1;
 	}
+	return 0;
 }
 
 int findPhysicalDevice(int d) {
@@ -558,16 +561,19 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	if (version == 32) {
 		codesize = sizeof(spv32);
 		code = spv32;
-	} else if (version == 64) {
-		codesize = sizeof(spv64);
-		code = spv64;
+	} else if (version == 192) {
+		codesize = sizeof(spv192);
+		code = spv192;
+	} else if (version == 256) {
+		codesize = sizeof(spv256);
+		code = spv256;
 	} else {
 		needfree = 1;
 		code = readFile(&codesize, "comp.spv");
 	}
 
         // Initialize vulkan:
-	createInstance();
+	if (createInstance() < 0) {return -1;}
 	int devices = findPhysicalDevice(devn);
 	if (devices == 0) {return -1;}
         createDevice();

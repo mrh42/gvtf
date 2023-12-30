@@ -4,26 +4,29 @@ import (
 	"fmt"
 	"math"
 	"flag"
-	//"runtime"
 	"os"
 	"os/user"
 	"time"
 	"sort"
-	//"strings"
-	"strconv"
 	"math/big"
 	"encoding/json"
 )
 
-//#cgo LDFLAGS: -L. -lm -lvulkan
+//#cgo LDFLAGS: -L. -lvulkan
 //#include "tf.h"
 import "C"
 
+//
+// remove composite factors from the list.  return a list of factors as strings.
+//
 func removecomp(factors []*big.Int) []string {
 	out := make([]string, 0, len(factors))
 
 	Z := big.NewInt(0)
 	for i, f := range factors {
+		if ! f.ProbablyPrime(10) {
+			fmt.Fprintf(os.Stderr, "# %d not prime?\n", f)
+		}
 		comp := false
 		for j := 0; j < i; j++ {
 			g := factors[j]
@@ -44,28 +47,19 @@ func removecomp(factors []*big.Int) []string {
 
 type Jtf struct {
 	//timestamp, exponent, worktype, status, bitlo, bithi(, begink, endk), rangecomplete, factors, program, user, computer
-	Timestamp  string   `json:"timestamp"`
-	Exponent   uint64   `json:"exponent"`
-	Worktype   string   `json:"worktype"`
-	Status     string   `json:"status"`
-	Bitlo      int64    `json:"bitlo"`
-	Bithi      int64    `json:"bithi"`
+	Timestamp  string     `json:"timestamp"`
+	Exponent   uint64     `json:"exponent"`
+	Worktype   string     `json:"worktype"`
+	Status     string     `json:"status"`
+	Bitlo      int64      `json:"bitlo"`
+	Bithi      int64      `json:"bithi"`
 	Begink     *big.Int   `json:"begink"`
 	Endk       *big.Int   `json:"endk"`
-	Rangec     bool     `json:"rangecomplete"`
-	Factors    []string `json:"factors,omitempty"`
+	Rangec     bool       `json:"rangecomplete"`
+	Factors    []string   `json:"factors,omitempty"`
 	Program    map[string]string  `json:"program,omitempty"`
-	User       string   `json:"user"`
-	Computer   string   `json:"computer,omitempty"`
-}
-
-func parseint(s string) uint64 {
-	i, _ := strconv.ParseInt(s, 10, 64)
-	return uint64(i)
-}
-func parsef(s string) float64 {
-	i, _ := strconv.ParseFloat(s, 64)
-	return i
+	User       string     `json:"user"`
+	Computer   string     `json:"computer,omitempty"`
 }
 
 func initInput(P uint64) {
@@ -91,43 +85,23 @@ func initInput(P uint64) {
 func u64n(N *big.Int, pos uint) uint64 {
 	one := big.NewInt(1)
 	m64 := big.NewInt(1)
-	m64.Lsh(m64, 64)
-	m64.Sub(m64, one)
+	m64.Lsh(m64, 64).Sub(m64, one)
 
 	R := new(big.Int)
-	R.Rsh(N, pos * 64)
-	R.And(R, m64)
+	R.Rsh(N, pos * 64).And(R, m64)
 	return R.Uint64()
-}
-func u32n(N *big.Int, pos uint) uint32 {
-	m32 := big.NewInt(0xffffffff)
-
-	R := new(big.Int)
-	R.Rsh(N, pos * 32)
-	R.And(R, m32)
-	return uint32(R.Uint64())
-}
-func big3(u0, u1, u2 C.uint) *big.Int {
-	f := big.NewInt(int64(u2))
-	f.Lsh(f, 64)
-	f1 := big.NewInt(int64(u1))
-	f1.Lsh(f1, 32)
-	f.Or(f, f1)
-	f0 := big.NewInt(int64(u0))
-	f.Or(f, f0)
-	return f
 }
 func big2(u0, u1 C.uint64_t) *big.Int {
 	f := new(big.Int)
 	f.SetUint64(uint64(u1))
 	f.Lsh(f, 64)
 	f1 := new(big.Int)
-	f.SetUint64(uint64(u0))
+	f1.SetUint64(uint64(u0))
 	f.Or(f, f1)
 	return f
 }
 
-func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
+func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 
 	//K1 = C.M * (K1/C.M);
@@ -161,18 +135,13 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 		//p.KmodM2 = C.uint(k64 % C.M2)
 		p.KmodM2 = C.uint(KmM2.Uint64())
 
-		//C.mrhUnMap();		
 		C.runCommandBuffer()
-		//p = (*C.struct_Stuff)(C.mrhGetMap());
 
 		fk64, _ := K.Float64()
 		lb2 := math.Log2(fk64 * float64(P) * 2.0)
 		count++
 		if (count % 2000) == 0 {
 			fmt.Fprintf(os.Stderr, "# %f %f\n", lb2, bitlimit)
-		}
-		if lb2 > bitlimit {
-			mrhDone = true
 		}
 		if p.Debug[1] > 0 {
 			for i := 0; i < 10; i++ {
@@ -188,10 +157,14 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 					//mrhDone = 1;
 				}
 			}
+			if stop {mrhDone = true}
+		}
+		if lb2 > bitlimit {
+			mrhDone = true
 		}
 		
 		if (mrhDone) {
-			doLog(P, K1, K, kfound)
+			doLog(P, K1, K, kfound, !stop)
 			break;
 		}
 		
@@ -209,7 +182,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64) {
 	C.mrhUnMap();
 }
 
-func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
+func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
 	k1f, _ := K1.Float64()
 	k2f, _ := K2.Float64()
 	bitlo := math.Log2(k1f * float64(p) * 2.0 + 1)
@@ -252,7 +225,7 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int) {
 	u, _ := user.Current()
 	out.User = u.Username
 	out.Computer, _ = os.Hostname()
-	out.Rangec = true
+	out.Rangec = complete
 	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.3"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
@@ -275,7 +248,8 @@ func main() {
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
-	version := flag.Int("version", 32, "version of GPU code to use, 32 or 64-bit")
+	version := flag.Int("version", 32, "version of GPU code to use, 32, 192(64-bit), or 256(64-bit)")
+	stop := flag.Bool("stop", false, "stop when factor found")
 	//countp := flag.Int("count", 1, "number of exponents to test")
 	flag.Parse()
 	//runtime.LockOSThread()
@@ -288,7 +262,7 @@ func main() {
 	K1.SetString(*k1, 10)
 	if r == 0 {
 		initInput(P);
-		tfRun(P, K1, *B2);
+		tfRun(P, K1, *B2, *stop);
 	}
 	C.cleanup()
 }
