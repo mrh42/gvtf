@@ -1,5 +1,8 @@
-gvtf: spv32.h spv192.h spv256.h tf.c tf.h gvtf.go go.mod
+gvtf: spv32.h spv192.h spv256.h tf.c tf.h comp.spv gvtf.go go.mod
 	go build
+
+comp.spv: tf.comp
+	glslangValidator --target-env spirv1.6 -V tf.comp
 
 spv32.h: tf32.comp
 	glslangValidator --target-env spirv1.6 --vn spv32 -V tf32.comp -o spv32.h

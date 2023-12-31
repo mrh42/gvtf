@@ -55,8 +55,8 @@ layout(binding = 0) buffer buf
 // This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
 layout(binding = 1) buffer buf2
 {
-	uint       List[ListN];
-	bool       X2[M2];
+	uint64_t   List[ListN];
+	//bool       X2[M2];
 };
 
 struct uint128 {
@@ -498,7 +498,7 @@ bool tf(uint128 k) {
 	sq.Lo = 1; sq.Hi = 0;
 	for (int b = top; b >= 0; b--) {
 		bool bb = (P & (one << b)) != 0;
-		SqModXX(sq, q, bb, qinv);
+		SqMod9(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;
@@ -508,7 +508,7 @@ void main() {
 	//uint I = gl_GlobalInvocationID.x;
 	if (Init == 0) {
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint64_t i = atomicAdd(Z, 1);
 			if (i >= M) {
 				// All threads return here.
 				return;
@@ -521,13 +521,6 @@ void main() {
 			if (!x) {
 				uint o = atomicAdd(Ll, 1);
 				List[o] = i;
-			}
-			//
-			// this table allows a 12% speedup later
-			//
-			if (i < M2) {
-				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||
-					    (q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
 			}
 		}
 		// no threads reach here.
@@ -545,17 +538,8 @@ void main() {
 		if (i >= Ll) {
 			return;
 		}
-		uint o = List[i];
+		uint64_t o = List[i];
 		uint128 oo;
-
-		//
-		// this test gives a speedup of about 12%.
-		// the mod M2 is fairly expensive
-		//
-		if (X2[(o + KmodM2)%M2] == false) {
-			//uint x = atomicAdd(Debug[0], 1);
-			continue;
-		}
 
 		// offset from the base K
 		oo.Lo = o;

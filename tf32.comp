@@ -35,9 +35,10 @@ layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
 	uint        Init;       // If this is 0, then we setup our tables once.
-	uint        L;
-	uint        Ll;          // Length of List
+	uint        L;          // threads use atomicAdd(L, 1) to get next next list index
+	uint        Ll;         // Length of List
 	uint        KmodM2;
+	uint64_t    Z;          // used by Init for atomicAdd(Z, 1)
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        Debug[2];   // output only used for debugging

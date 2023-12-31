@@ -25,7 +25,7 @@ func removecomp(factors []*big.Int) []string {
 	Z := big.NewInt(0)
 	for i, f := range factors {
 		if ! f.ProbablyPrime(10) {
-			fmt.Fprintf(os.Stderr, "# %d not prime?\n", f)
+			fmt.Fprintf(os.Stderr, "# %d is composite\n", f)
 		}
 		comp := false
 		for j := 0; j < i; j++ {
@@ -71,9 +71,10 @@ func initInput(P uint64) {
 	p.Init = 0
 	p.L = 0
 	p.Ll = 0
+	p.Z = 0
 	C.runCommandBuffer()
 	if p.Ll != C.ListLen {
-		fmt.Fprintf(os.Stderr, "-------- Something went wrong during init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+		fmt.Fprintf(os.Stderr, "# -------- Something went wrong during init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
 	}
 
 	p.L = 0
@@ -150,7 +151,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 				if f64 > 0 {
 					kfound = append(kfound, f)
 					flb2 := math.Log2(f64 * float64(P) * 2.0)
-					fmt.Fprintf(os.Stderr, "# %d kfactor %d E: %d D: %d %.4f\n", P, f, p.Debug[0], p.Debug[1], flb2);
+					fmt.Fprintf(os.Stderr, "# %d kfactor %d E: %d D: %d %.4f C: %d\n", P, f, p.Debug[0], p.Debug[1], flb2, count);
 
 					p.Found[i][0] = 0;
 					p.Found[i][1] = 0;
@@ -250,7 +251,7 @@ func main() {
 	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
 	version := flag.Int("version", 32, "version of GPU code to use, 32, 192(64-bit), or 256(64-bit)")
 	stop := flag.Bool("stop", false, "stop when factor found")
-	//countp := flag.Int("count", 1, "number of exponents to test")
+
 	flag.Parse()
 	//runtime.LockOSThread()
 

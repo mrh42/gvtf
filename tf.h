@@ -18,6 +18,7 @@ struct Stuff {
 	uint32_t    L;            // start with 0, each thread will increment with AtomicAdd(L, 1)  
 	uint32_t    Ll;           // ListLen, when L >= Ll, threads will return.
 	uint32_t    KmodM2;
+	uint64_t    Z;            // (experimental) used by Init for atomicAdd(Z, 1)
 	uint64_t    K[2];         // 96, but only 64 used currently  XXX
 	uint64_t    Found[10][2]; // up to 10 96-bit K values
 	uint32_t    Debug[2];     // debugging passed back from the gpu
@@ -26,7 +27,7 @@ struct Stuff {
 // This is allocated in DEVICE_LOCAL memory, and is not shared with host.
 // This is much to access faster from the shader, especially if the GPU is in a PCIx1 slot.
 struct Stuff2 {
-	uint32_t    List[ListLen];
+	uint64_t    List[ListLen];  // the shader may use uint32_t or uint64_t, so we allocate enough for either
 	uint32_t    X2[M2];
 };
 

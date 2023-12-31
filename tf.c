@@ -34,7 +34,7 @@ uint32_t queueFamilyIndex;
 //
 // total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
 //
-const int np = 1024*1024*8;
+const int np = 1024*1024*16;
 
 int createInstance() {
         VkApplicationInfo applicationInfo = {};
@@ -71,16 +71,19 @@ int createInstance() {
 int findPhysicalDevice(int d) {
         uint32_t deviceCount = 32;
 
-        //std::vector<VkPhysicalDevice> devices(deviceCount);
-	VkPhysicalDevice devices[32];
+	vkEnumeratePhysicalDevices(instance, &deviceCount, NULL);
+	VkPhysicalDevice devices[deviceCount];
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices);
 
-	//fprintf(stderr, "mrhdebug---num devices: %d\n", deviceCount);
 	if (deviceCount > 0) {
 		if (d > deviceCount-1) {
 			d = deviceCount-1;
 		}
 		physicalDevice = devices[d];
+		VkPhysicalDeviceProperties p;
+		vkGetPhysicalDeviceProperties(physicalDevice, &p);
+		fprintf(stderr, "# findPhysicalDevice(): count: %d, selected: %d name: '%s' type: %d\n",
+			deviceCount, d, p.deviceName, p.deviceType);
 	}
 	return deviceCount;
 }
@@ -578,6 +581,7 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	if (createInstance() < 0) {return -1;}
 	int devices = findPhysicalDevice(devn);
 	if (devices == 0) {return -1;}
+
         createDevice();
         createBuffer();
         createBuffer2();
