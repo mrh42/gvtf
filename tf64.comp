@@ -397,7 +397,7 @@ void fto128(double f, out uint128 A) {
 	A.Lo = uint64_t(f - double(A.Hi) * p64);
 }
 
-// 245-bit Floating point version
+// 256-bit Floating point version
 void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	uint256 X, Y;
 	uint128 D;
@@ -550,7 +550,7 @@ void main() {
 
 		//
 		// this test gives a speedup of about 12%.
-		// the mod M2 is fairly expensive
+		// the if-branch itself and mod M2 are fairly expensive
 		//
 		if (X2[(o + KmodM2)%M2] == false) {
 			//uint x = atomicAdd(Debug[0], 1);
