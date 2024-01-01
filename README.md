@@ -22,9 +22,7 @@ This is the front end to handle command line options, initialize parameters in t
 
 For vulkan dev tools see: https://www.lunarg.com/vulkan-sdk/
 
-
-This version is using a golang frontend, with some C-code helping functions.
-
+## usage
      Usage of ./gvtf:
            -bithi float
 	          bit limit to test to (default 68)
