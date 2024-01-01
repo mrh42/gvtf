@@ -2,9 +2,22 @@
 A simple vulkan compute shader TF implementation for mersenne primes.  This isn't meant
 for production, mostly to explore what can be done and how well in a computer shader.
 
+# math
+tf32.comp is a version of the shader using 32-bit unsigned ints to implement 96/192-bit extended math.
+tf64.comp uses 64-bit unsigned ints to implement 128/192/256-bit extended math.
+
+# init
+The Init==0 part of the shader is called once for a particular exponent, P.  It tests for (3,5)mod8, and (0)mod(primes 3 -> 23). From
+446,185,740 (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23) potential K-values, a list of 72,990,720 candidates is build.
+
+# tf
+During an Init==1 call to the shader, each thread takes an offset from the list, adds it to the 128-bit base-K, then
+computes Q = P * K * 2 + 1, which is then TF tested. When the entire list has been tested, the cpu side sets K-base += 446,185,740.
+
 For vulkan tools see: https://www.lunarg.com/vulkan-sdk/
 
-This version using a golang frontend, with some C-code helping functions.
+
+This version is using a golang frontend, with some C-code helping functions.
 
      Usage of ./gvtf:
            -bithi float

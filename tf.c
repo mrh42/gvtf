@@ -34,7 +34,7 @@ uint32_t queueFamilyIndex;
 //
 // total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
 //
-const int np = 1024*1024*16;
+const int np = 1024*1024*8;
 
 int createInstance() {
         VkApplicationInfo applicationInfo = {};

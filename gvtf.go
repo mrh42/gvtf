@@ -244,7 +244,7 @@ func nextP(p uint64) uint64 {
 
 func main() {
 
-	// 4112322971, 6000003419, 6000003437, 6000003167
+	// 4112322971, 4113809639, 6000003419, 6000003437, 6000003167
 	Pp := flag.Uint64("exponent", 4112322971, "The exponent to test")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
