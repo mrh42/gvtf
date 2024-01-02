@@ -10,6 +10,8 @@
 #extension GL_EXT_shader_atomic_int64: enable
 
 //
+// (This code is not compiled into the binary, I'm using this version to try out ideas that will break things..)
+//
 // This is version using 64-bit based 128/192/256-bit math. Seems to be faster on nvidia than the 32-bit version.
 //
 // compile this file into SPIR-V with:

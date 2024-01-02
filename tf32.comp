@@ -9,6 +9,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 #extension GL_EXT_shader_atomic_int64: enable
 
+// This SPIR-V from this file is compiled into the gvtf binary, selected with version=32
 //
 // compile this file into SPIR-V with:
 //   glslangValidator --target-env vulkan1.3 -V tf.comp
