@@ -144,6 +144,8 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 		if (count % 2000) == 0 {
 			fmt.Fprintf(os.Stderr, "# %f %f\n", lb2, bitlimit)
 		}
+		//fmt.Fprintf(os.Stderr, "%d %d\n", count, p.Debug[0])
+		p.Debug[0] = 0;
 		if p.Debug[1] > 0 {
 			for i := 0; i < 10; i++ {
 				f := big2(p.Found[i][0], p.Found[i][1])
@@ -230,6 +232,12 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
 	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.3"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
+
+	f, err := os.OpenFile("gvtf-results.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		fmt.Fprintln(f, string(o))
+	}
+	f.Close()
 }
 
 func nextP(p uint64) uint64 {
@@ -262,8 +270,11 @@ func main() {
 	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version))
 	K1.SetString(*k1, 10)
 	if r == 0 {
+		//startt := time.Now()
 		initInput(P);
 		tfRun(P, K1, *B2, *stop);
+		//elapsed := time.Now().Sub(startt)
+		//fmt.Fprintln(os.Stderr, "# elapsed: ", elapsed)
 		C.cleanup()
 	}
 }

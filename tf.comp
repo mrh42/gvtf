@@ -207,6 +207,9 @@ void Add(inout uint128 A, uint128 B) {
 bool Zero(uint128 A) {
 	return A.Lo == 0 && A.Hi == 0;
 }
+bool Zero(uint192 A) {
+	return A.H == 0 && A.L.Lo == 0 && A.L.Hi == 0;
+}
 void multiply64to128(uint64_t x, uint64_t y, out uint128 r)
 {
 	uint64_t lowbits = 0xfffffffful;
@@ -397,7 +400,7 @@ void fto128(double f, out uint128 A) {
 	A.Lo = uint64_t(f - double(A.Hi) * p64);
 }
 
-// 245-bit Floating point version
+// 256-bit Floating point version
 void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	uint256 X, Y;
 	uint128 D;
@@ -455,7 +458,9 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		Sub(X, Y);
 		i++;
 	}
-	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
+	if (gl_GlobalInvocationID.x == 0) {
+		atomicAdd(Debug[0], i);
+	}
 	A = X.L;
 }
 /*
@@ -489,7 +494,7 @@ bool tf(uint128 k) {
 
         // Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
-	double qinv = 0.99999999999999 / toF(q);
+	double qinv = 0.9999999999999 / toF(q);
 
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,

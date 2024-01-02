@@ -296,7 +296,7 @@ bool tf(uint96 k) {
 
         // Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
-	double qinv = 0.99999999999999 / toF(q);
+	double qinv = 0.9999999999999 / toF(q);
 
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,

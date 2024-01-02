@@ -30,7 +30,9 @@ uint64_t bufferSize2; // size of `buffer` in bytes.
 VkQueue queue; // a queue supporting compute operations.
 uint32_t queueFamilyIndex;
 
-
+//
+// A lot of code in this file was inspired by:
+//    https://github.com/Erkaman/vulkan_minimal_compute
 //
 // total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
 //
@@ -80,6 +82,7 @@ int findPhysicalDevice(int d) {
 			d = deviceCount-1;
 		}
 		physicalDevice = devices[d];
+
 		VkPhysicalDeviceProperties p;
 		vkGetPhysicalDeviceProperties(physicalDevice, &p);
 		fprintf(stderr, "# findPhysicalDevice(): count: %d, selected: %d name: '%s' type: %d\n",
