@@ -85,7 +85,7 @@ int findPhysicalDevice(int d) {
 
 		VkPhysicalDeviceProperties p;
 		vkGetPhysicalDeviceProperties(physicalDevice, &p);
-		fprintf(stderr, "# findPhysicalDevice(): count: %d, selected: %d name: '%s' type: %d\n",
+		fprintf(stdout, "# findPhysicalDevice(): count: %d, selected: %d name: '%s' type: %d\n",
 			deviceCount, d, p.deviceName, p.deviceType);
 	}
 	return deviceCount;

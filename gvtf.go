@@ -25,7 +25,7 @@ func removecomp(factors []*big.Int) []string {
 	Z := big.NewInt(0)
 	for i, f := range factors {
 		if ! f.ProbablyPrime(10) {
-			fmt.Fprintf(os.Stderr, "# %d is composite\n", f)
+			fmt.Fprintf(os.Stdout, "# %d is composite\n", f)
 		}
 		comp := false
 		for j := 0; j < i; j++ {
@@ -45,7 +45,7 @@ func removecomp(factors []*big.Int) []string {
 	return out
 }
 
-type Jtf struct {
+type Result struct {
 	//timestamp, exponent, worktype, status, bitlo, bithi(, begink, endk), rangecomplete, factors, program, user, computer
 	Timestamp  string     `json:"timestamp"`
 	Exponent   uint64     `json:"exponent"`
@@ -60,6 +60,8 @@ type Jtf struct {
 	Program    map[string]string  `json:"program,omitempty"`
 	User       string     `json:"user"`
 	Computer   string     `json:"computer,omitempty"`
+
+	kfactors   []*big.Int  // not written.
 }
 
 func initInput(P uint64) {
@@ -72,12 +74,14 @@ func initInput(P uint64) {
 	p.L = 0
 	p.Ll = 0
 	p.Z = 0
+	// Run the shader with init==0
 	C.runCommandBuffer()
 	if p.Ll != C.ListLen {
-		fmt.Fprintf(os.Stderr, "# -------- Something went wrong during init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+		fmt.Fprintf(os.Stdout, "# -------- Something went wrong during init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
 	}
 
 	p.L = 0
+	// from now on, init==1
 	p.Init = 1
 
 	C.mrhUnMap()
@@ -102,9 +106,10 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
-func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
+func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 
+	stop := !result.Rangec
 	//K1 = C.M * (K1/C.M);
 	M := big.NewInt(C.M)
 	K:= new(big.Int)
@@ -113,7 +118,6 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
-	//p.K[2] = C.uint(u32n(K, 2))
 
 
 	p.L = 0
@@ -121,7 +125,6 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
 		p.Found[i][1] = 0
-		//p.Found[i][2] = 0
 	}
 
 	M2 := big.NewInt(C.M2)
@@ -142,7 +145,7 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 		lb2 := math.Log2(fk64 * float64(P) * 2.0)
 		count++
 		if (count % 2000) == 0 {
-			fmt.Fprintf(os.Stderr, "# %f %f\n", lb2, bitlimit)
+			fmt.Fprintf(os.Stdout, "# %f %f\n", lb2, bitlimit)
 		}
 		//fmt.Fprintf(os.Stderr, "%d %d\n", count, p.Debug[0])
 		p.Debug[0] = 0;
@@ -153,11 +156,10 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 				if f64 > 0 {
 					kfound = append(kfound, f)
 					flb2 := math.Log2(f64 * float64(P) * 2.0)
-					fmt.Fprintf(os.Stderr, "# %d kfactor %d E: %d D: %d %.4f C: %d\n", P, f, p.Debug[0], p.Debug[1], flb2, count);
+					fmt.Fprintf(os.Stdout, "# %d kfactor %d E: %d D: %d %.4f C: %d\n", P, f, p.Debug[0], p.Debug[1], flb2, count);
 
 					p.Found[i][0] = 0;
 					p.Found[i][1] = 0;
-					//mrhDone = 1;
 				}
 			}
 			if stop {mrhDone = true}
@@ -167,7 +169,9 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 		}
 		
 		if (mrhDone) {
-			doLog(P, K1, K, kfound, !stop)
+			result.kfactors = kfound
+			result.Begink = K1
+			result.Endk = K
 			break;
 		}
 		
@@ -182,29 +186,32 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, stop bool) {
 		}
 	}
 
-	C.mrhUnMap();
+	C.mrhUnMap()
+	return
 }
 
-func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
-	k1f, _ := K1.Float64()
-	k2f, _ := K2.Float64()
+//func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
+func doLog(out *Result) {
+	p := out.Exponent
+	k1f, _ := out.Begink.Float64()
+	k2f, _ := out.Endk.Float64()
 	bitlo := math.Log2(k1f * float64(p) * 2.0 + 1)
 	bithi := math.Log2(k2f * float64(p) * 2.0 + 1)
 	if k1f <= 1 {
-		K1.SetInt64(1)
+		out.Begink.SetInt64(1)
 		bitlo = 1.0
 	}
-	stamp := time.Now().UTC().Format("2006-01-02 15:04:05")
+	out.Timestamp = time.Now().UTC().Format("2006-01-02 15:04:05")
 	st := "F"
-	if len(kfactors) == 0 {st = "NF"}
+	if len(out.kfactors) == 0 {st = "NF"}
 
 	P := big.NewInt(int64(p))
 	One := big.NewInt(1)
-	sort.Slice(kfactors, func(i, j int) bool {
-		return kfactors[i].Cmp(kfactors[j]) < 0
+	sort.Slice(out.kfactors, func(i, j int) bool {
+		return out.kfactors[i].Cmp(out.kfactors[j]) < 0
 	})
-	factors := make([]*big.Int, 0, len(kfactors))
-	for _, k := range kfactors {
+	factors := make([]*big.Int, 0, len(out.kfactors))
+	for _, k := range out.kfactors {
 		F := new(big.Int)
 		F.Mul(k, P)
 		F.Lsh(F, 1)
@@ -213,27 +220,18 @@ func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
 	}
 	sfactors := removecomp(factors)
 
-	out := &Jtf{}
 	if len(sfactors) > 0 {
 		out.Factors = sfactors
 	}
-	out.Timestamp = stamp
-	out.Exponent = p
 	out.Worktype = "TF"
 	out.Status = st
-	out.Begink = K1
-	out.Endk = K2
 	out.Bitlo = int64(bitlo)
 	out.Bithi = int64(bithi)
-	u, _ := user.Current()
-	out.User = u.Username
-	out.Computer, _ = os.Hostname()
-	out.Rangec = complete
 	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.3"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
 
-	f, err := os.OpenFile("gvtf-results.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile("results.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err == nil {
 		fmt.Fprintln(f, string(o))
 	}
@@ -252,29 +250,38 @@ func nextP(p uint64) uint64 {
 
 func main() {
 
+	var P uint64
+	var username string
+	u, _ := user.Current()
+	host, _ := os.Hostname()
+
 	// 4112322971, 4113809639, 6000003419, 6000003437, 6000003167
-	Pp := flag.Uint64("exponent", 4112322971, "The exponent to test")
+	flag.Uint64Var(&P, "exponent", 4112322971, "The exponent to test")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
 	version := flag.Int("version", 32, "version of GPU code to use, 32, 192(64-bit), or 256(64-bit)")
 	stop := flag.Bool("stop", false, "stop when factor found")
 
+	flag.StringVar(&username, "username", u.Username, "username")
+	flag.StringVar(&host, "host", host, "hostname")
 	flag.Parse()
-	//runtime.LockOSThread()
 
-	//count := *countp
-	P := *Pp
 	K1 := new(big.Int)
+	K1.SetString(*k1, 10)
+
+	if !big.NewInt(int64(P)).ProbablyPrime(10) {
+		fmt.Fprintf(os.Stderr, "%d doesn't look prime. How about %d instead?\n", P, nextP(P))
+		os.Exit(1)
+	}
+	result := &Result{Exponent:P, Rangec:!*stop, User:username, Computer:host}
 
 	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version))
-	K1.SetString(*k1, 10)
 	if r == 0 {
-		//startt := time.Now()
-		initInput(P);
-		tfRun(P, K1, *B2, *stop);
-		//elapsed := time.Now().Sub(startt)
-		//fmt.Fprintln(os.Stderr, "# elapsed: ", elapsed)
+		initInput(P)
+
+		tfRun(P, K1, *B2, result)
+		doLog(result)
 		C.cleanup()
 	}
 }
