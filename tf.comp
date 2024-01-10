@@ -50,7 +50,6 @@ layout(binding = 0) buffer buf
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        Debug[2];   // output only used for debugging
-	uint        KmodM3;
 };
 
 
@@ -60,7 +59,6 @@ layout(binding = 1) buffer buf2
 {
 	uint       List[ListN];
 	bool       X2[M2];
-	bool       X3[M3];
 };
 
 struct uint128 {
@@ -533,10 +531,6 @@ void main() {
 				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||
 					    (q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
 			}
-			if (i < M3) {
-				X3[i] = ! (((q % 47) == 0 ||(q % 53) == 0 ||
-					    (q % 59) == 0|| (q % 61) == 0));
-			}
 		}
 		// no threads reach here.
 	}
@@ -560,7 +554,7 @@ void main() {
 		// this test gives a speedup of about 12%.
 		// the if-branch itself and mod M2 are fairly expensive
 		//
-		if (X2[(o + KmodM2)%M2] == false || X3[(o + KmodM3)%M3] == false) {
+		if (X2[(o + KmodM2)%M2] == false) {
 			//uint x = atomicAdd(Debug[0], 1);
 			continue;
 		}

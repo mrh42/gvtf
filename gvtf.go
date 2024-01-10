@@ -109,13 +109,12 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
-func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
+func tfRun(P uint64, K1, K2 *big.Int, result *Result) {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 
-	stop := !result.Rangec
 	//K1 = C.M * (K1/C.M);
 	M := big.NewInt(C.M)
-	K:= new(big.Int)
+	K := new(big.Int)
 	K.Div(K1, M)
 	K.Mul(K, M)
 
@@ -131,7 +130,6 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
 	}
 
 	M2 := big.NewInt(C.M2)
-	M3 := big.NewInt(C.M3)
 	kfound := make([]*big.Int, 0, 10)
 	mrhDone := false
 	count := 0
@@ -142,17 +140,14 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
 		KmM2 := new(big.Int)
 		KmM2.Mod(K, M2)
 		p.KmodM2 = C.uint(KmM2.Uint64())
-		KmM3 := new(big.Int)
-		KmM3.Mod(K, M3)
-		p.KmodM3 = C.uint(KmM3.Uint64())
 
 		C.runCommandBuffer()
 
-		fk64, _ := K.Float64()
-		lb2 := math.Log2(fk64 * float64(P) * 2.0)
+		//fk64, _ := K.Float64()
+		//lb2 := math.Log2(fk64 * float64(P) * 2.0)
 		count++
 		if (count % 2000) == 0 {
-			fmt.Fprintf(os.Stdout, "# %f %f\n", lb2, bitlimit)
+			fmt.Fprintf(os.Stdout, "# %d %d \n", K, K2)
 		}
 		//fmt.Fprintf(os.Stderr, "%d %d\n", count, p.Debug[0])
 		p.Debug[0] = 0;
@@ -168,10 +163,9 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
 					p.Found[i][0] = 0;
 					p.Found[i][1] = 0;
 				}
-			}
-			if stop {mrhDone = true}
+			}			
 		}
-		if lb2 > bitlimit {
+		if K.Cmp(K2) > 0 {
 			mrhDone = true
 		}
 		
@@ -200,11 +194,10 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
 //func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
 func doLog(out *Result) {
 	p := out.Exponent
-	k1f, _ := out.Begink.Float64()
-	k2f, _ := out.Endk.Float64()
-	bitlo := math.Log2(k1f * float64(p) * 2.0 + 1)
-	bithi := math.Log2(k2f * float64(p) * 2.0 + 1)
-	if k1f <= 1 {
+	bitlo := ktobit(p, out.Begink)
+	bithi := ktobit(p, out.Endk)
+	fmt.Printf("--- %f %f\n", bitlo, bithi)
+	if bitlo <= 1 {
 		out.Begink.SetInt64(1)
 		bitlo = 1.0
 	}
@@ -232,9 +225,9 @@ func doLog(out *Result) {
 	}
 	out.Worktype = "TF"
 	out.Status = st
-	out.Bitlo = int64(bitlo)
-	out.Bithi = int64(bithi)
-	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.3"}
+	out.Bitlo = int64(math.Round(bitlo))
+	out.Bithi = int64(math.Floor(bithi))
+	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.4"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
 
@@ -298,10 +291,10 @@ func writework(work []*Work, filename string) error {
 	return nil
 }
 
-func runOne(P uint64, K1 *big.Int, hi float64, result *Result) {
+func runOne(P uint64, K1, K2 *big.Int, result *Result) {
 	initInput(P)
 
-	tfRun(P, K1, hi, result)
+	tfRun(P, K1, K2, result)
 	doLog(result)
 }
 
@@ -316,12 +309,29 @@ func runWork(filename, username, host string) {
 	for i, w := range work {
 		result := &Result{Exponent:w.exponent, Rangec:true, User:username, Computer:host}
 		K1 := big.NewInt(1)
-		runOne(w.exponent, K1, float64(w.high), result)
+		if w.low > 1 {
+			K1 = kfrombit(w.exponent, uint(w.low))
+		}
+		K2 := kfrombit(w.exponent, uint(w.high))
+		runOne(w.exponent, K1, K2, result)
 
 		writework(work[i+1:], filename)
 	}
 }
-
+func kfrombit(P uint64, bit uint) *big.Int {
+	K2 := big.NewInt(1)
+	K2.Lsh(K2, bit - 1)
+	K2.Div(K2, big.NewInt(int64(P)))
+	return K2
+}
+func ktobit(P uint64, K *big.Int) float64 {
+	Q := new(big.Int)
+	Q.SetUint64(P)
+	Q.Lsh(Q, 1)
+	Q.Mul(Q, K)
+	x, _ := Q.Float64()
+	return math.Log2(x)
+}
 func main() {
 
 	var P uint64
@@ -336,7 +346,8 @@ func main() {
 	flag.StringVar(&workfile, "worktodo", "", "worktodo filename")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
-	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
+	B2 := flag.Uint("bithi", 68, "bit limit to test to")
+	B1 := flag.Uint("bitlo", 0, "bit limit to test from")
 	version := flag.Int("version", 32, "version of GPU code to use, 32, 192(64-bit), or 256(64-bit)")
 
 	flag.StringVar(&username, "username", u.Username, "username")
@@ -353,14 +364,20 @@ func main() {
 		runWork(workfile, username, host)
 	} else {
 		K1 := new(big.Int)
-		K1.SetString(*k1, 10)
+		if *B1 == 0 {
+			K1.SetString(*k1, 10)
+		} else {
+			K1 = kfrombit(P, *B1)
+		}
+		K2 := kfrombit(P, *B2)
+			
 
 		if !big.NewInt(int64(P)).ProbablyPrime(10) {
 			fmt.Fprintf(os.Stderr, "%d doesn't look prime. How about %d instead?\n", P, nextP(P))
 			os.Exit(1)
 		}
 		result := &Result{Exponent:P, Rangec:true, User:username, Computer:host}
-		runOne(P, K1, *B2, result)
+		runOne(P, K1, K2, result)
 	}
 	C.cleanup()
 }

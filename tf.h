@@ -23,14 +23,12 @@ struct Stuff {
 	uint64_t    K[2];         // 128-bit K
 	uint64_t    Found[10][2]; // up to 10 96-bit K values
 	uint32_t    Debug[2];     // debugging passed back from the gpu
-	uint32_t    KmodM3;
 };
 // This is allocated in DEVICE_LOCAL memory, and is not shared with host.
 // This is much to access faster from the shader, especially if the GPU is in a PCIx1 slot.
 struct Stuff2 {
 	uint64_t    List[ListLen];  // the shader may use uint32_t or uint64_t, so we allocate enough for either
 	uint32_t    X2[M2];
-	uint32_t    X3[M3];
 };
 
 
