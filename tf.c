@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 #include <sys/time.h>
 #include "tf.h"
 #include "spv32.h"
@@ -586,11 +587,17 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	if (devices == 0) {return -1;}
 
         createDevice();
+	//fprintf(stderr, "created device\n");
         createBuffer();
+	//fprintf(stderr, "created buffer1\n");
         createBuffer2();
+	//fprintf(stderr, "created buffer2\n");
         createDescriptorSetLayout();
+	//fprintf(stderr, "created dslo\n");
         createDescriptorSet();
+	//fprintf(stderr, "created ds -- %d\n", codesize);
         createComputePipeline(code, codesize);
+	//fprintf(stderr, "created pipeline\n");
 
 	createCommandBuffer();
 

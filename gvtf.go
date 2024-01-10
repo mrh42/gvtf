@@ -6,8 +6,11 @@ import (
 	"flag"
 	"os"
 	"os/user"
+	"bufio"
 	"time"
 	"sort"
+	"strings"
+	"strconv"
 	"math/big"
 	"encoding/json"
 )
@@ -128,16 +131,20 @@ func tfRun(P uint64, K1 *big.Int, bitlimit float64, result *Result) {
 	}
 
 	M2 := big.NewInt(C.M2)
+	M3 := big.NewInt(C.M3)
 	kfound := make([]*big.Int, 0, 10)
 	mrhDone := false
 	count := 0
 	for {
 		p.Debug[0] = 0
 		p.Debug[1] = 0
+
 		KmM2 := new(big.Int)
 		KmM2.Mod(K, M2)
-		//p.KmodM2 = C.uint(k64 % C.M2)
 		p.KmodM2 = C.uint(KmM2.Uint64())
+		KmM3 := new(big.Int)
+		KmM3.Mod(K, M3)
+		p.KmodM3 = C.uint(KmM3.Uint64())
 
 		C.runCommandBuffer()
 
@@ -240,6 +247,7 @@ func doLog(out *Result) {
 
 func nextP(p uint64) uint64 {
 
+	if (p & 1) != 1 { p++}
 	p += 2
 	P := new(big.Int)
 	for !P.SetUint64(p).ProbablyPrime(10) {
@@ -247,41 +255,112 @@ func nextP(p uint64) uint64 {
 	}
 	return p
 }
+type Work struct {
+	exponent    uint64
+	low,high    uint64
+}
+
+func readwork(filename string) ([]*Work, error) {
+	f, err := os.Open(filename)
+	if err != nil {return nil, err}
+
+	list := make([]*Work, 0, 1000)
+	
+	reader := bufio.NewScanner(f)
+	for reader.Scan() {
+		s := reader.Text()
+		f := strings.Split(s, "=")
+		if len(f) == 2 && f[0] == "Factor" {
+			e := strings.Split(f[1], ",")
+			if len(e) == 3 {
+				w := &Work{}
+				w.exponent, err = strconv.ParseUint(e[0], 10, 64)
+				w.low, err = strconv.ParseUint(e[1], 10, 32)
+				w.high, err = strconv.ParseUint(e[2], 10, 32)
+				list = append(list, w)
+			}
+		}
+	}
+	f.Close()
+	return list, nil
+}
+func writework(work []*Work, filename string) error {
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("writework(): %s\n", err)
+		return err
+	}
+
+	for _, w := range work {
+		fmt.Fprintf(f, "Factor=%d,%d,%d\n", w.exponent, w.low, w.high)
+	}
+	f.Close()
+	return nil
+}
+
+func runOne(P uint64, K1 *big.Int, hi float64, result *Result) {
+	initInput(P)
+
+	tfRun(P, K1, hi, result)
+	doLog(result)
+}
+
+func runWork(filename, username, host string) {
+	work, err := readwork(filename)
+	if err != nil {
+		fmt.Printf("readwork %s\n", err)
+		return
+	}
+	fmt.Printf("read %d work entries\n", len(work))
+
+	for i, w := range work {
+		result := &Result{Exponent:w.exponent, Rangec:true, User:username, Computer:host}
+		K1 := big.NewInt(1)
+		runOne(w.exponent, K1, float64(w.high), result)
+
+		writework(work[i+1:], filename)
+	}
+}
 
 func main() {
 
 	var P uint64
 	var username string
+	var workfile string
+	
 	u, _ := user.Current()
 	host, _ := os.Hostname()
 
 	// 4112322971, 4113809639, 6000003419, 6000003437, 6000003167
 	flag.Uint64Var(&P, "exponent", 4112322971, "The exponent to test")
+	flag.StringVar(&workfile, "worktodo", "", "worktodo filename")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Float64("bithi", 68.0, "bit limit to test to")
 	version := flag.Int("version", 32, "version of GPU code to use, 32, 192(64-bit), or 256(64-bit)")
-	stop := flag.Bool("stop", false, "stop when factor found")
 
 	flag.StringVar(&username, "username", u.Username, "username")
 	flag.StringVar(&host, "host", host, "hostname")
 	flag.Parse()
 
-	K1 := new(big.Int)
-	K1.SetString(*k1, 10)
 
-	if !big.NewInt(int64(P)).ProbablyPrime(10) {
-		fmt.Fprintf(os.Stderr, "%d doesn't look prime. How about %d instead?\n", P, nextP(P))
-		os.Exit(1)
+	if 0 != C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version)) {
+		fmt.Fprintln(os.Stderr, "could not intialize vulkan")
+		return
 	}
-	result := &Result{Exponent:P, Rangec:!*stop, User:username, Computer:host}
 
-	r := C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version))
-	if r == 0 {
-		initInput(P)
+	if workfile != "" {
+		runWork(workfile, username, host)
+	} else {
+		K1 := new(big.Int)
+		K1.SetString(*k1, 10)
 
-		tfRun(P, K1, *B2, result)
-		doLog(result)
-		C.cleanup()
+		if !big.NewInt(int64(P)).ProbablyPrime(10) {
+			fmt.Fprintf(os.Stderr, "%d doesn't look prime. How about %d instead?\n", P, nextP(P))
+			os.Exit(1)
+		}
+		result := &Result{Exponent:P, Rangec:true, User:username, Computer:host}
+		runOne(P, K1, *B2, result)
 	}
+	C.cleanup()
 }

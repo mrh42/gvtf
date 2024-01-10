@@ -9,8 +9,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 #extension GL_EXT_shader_atomic_int64: enable
 
-//
-// (This code is not compiled into the binary, I'm using this version to try out ideas that will break things..)
+// This SPIR-V from this file is compiled into the gvtf binary, selected with version=192 or version=256
 //
 // This is version using 64-bit based 128/192/256-bit math. Seems to be faster on nvidia than the 32-bit version.
 //
@@ -32,6 +31,7 @@
 // When the entire list has been tested, K-base += M.
 #define M (4 * 3L * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
+#define M3 (47 * 53 * 59 * 61)                 //  8,965,109
 
 #define ListN 72990720
 //#define ListN 2043740170
@@ -50,6 +50,7 @@ layout(binding = 0) buffer buf
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        Debug[2];   // output only used for debugging
+	uint        KmodM3;
 };
 
 
@@ -57,8 +58,9 @@ layout(binding = 0) buffer buf
 // This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
 layout(binding = 1) buffer buf2
 {
-	uint64_t   List[ListN];
-	//bool       X2[M2];
+	uint       List[ListN];
+	bool       X2[M2];
+	bool       X3[M3];
 };
 
 struct uint128 {
@@ -208,9 +210,6 @@ void Add(inout uint128 A, uint128 B) {
 }
 bool Zero(uint128 A) {
 	return A.Lo == 0 && A.Hi == 0;
-}
-bool Zero(uint192 A) {
-	return A.H == 0 && A.L.Lo == 0 && A.L.Hi == 0;
 }
 void multiply64to128(uint64_t x, uint64_t y, out uint128 r)
 {
@@ -460,9 +459,7 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		Sub(X, Y);
 		i++;
 	}
-	if (gl_GlobalInvocationID.x == 0) {
-		atomicAdd(Debug[0], i);
-	}
+	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
 	A = X.L;
 }
 /*
@@ -496,7 +493,7 @@ bool tf(uint128 k) {
 
         // Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
-	double qinv = 0.9999999999999 / toF(q);
+	double qinv = 0.99999999999999 / toF(q);
 
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
@@ -505,7 +502,7 @@ bool tf(uint128 k) {
 	sq.Lo = 1; sq.Hi = 0;
 	for (int b = top; b >= 0; b--) {
 		bool bb = (P & (one << b)) != 0;
-		SqMod9(sq, q, bb, qinv);
+		SqMod(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;
@@ -515,7 +512,7 @@ void main() {
 	//uint I = gl_GlobalInvocationID.x;
 	if (Init == 0) {
 		while (true) {
-			uint64_t i = atomicAdd(Z, 1);
+			uint i = atomicAdd(L, 1);
 			if (i >= M) {
 				// All threads return here.
 				return;
@@ -528,6 +525,17 @@ void main() {
 			if (!x) {
 				uint o = atomicAdd(Ll, 1);
 				List[o] = i;
+			}
+			//
+			// this table allows a 12% speedup later
+			//
+			if (i < M2) {
+				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||
+					    (q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
+			}
+			if (i < M3) {
+				X3[i] = ! (((q % 47) == 0 ||(q % 53) == 0 ||
+					    (q % 59) == 0|| (q % 61) == 0));
 			}
 		}
 		// no threads reach here.
@@ -545,8 +553,17 @@ void main() {
 		if (i >= Ll) {
 			return;
 		}
-		uint64_t o = List[i];
+		uint o = List[i];
 		uint128 oo;
+
+		//
+		// this test gives a speedup of about 12%.
+		// the if-branch itself and mod M2 are fairly expensive
+		//
+		if (X2[(o + KmodM2)%M2] == false || X3[(o + KmodM3)%M3] == false) {
+			//uint x = atomicAdd(Debug[0], 1);
+			continue;
+		}
 
 		// offset from the base K
 		oo.Lo = o;
