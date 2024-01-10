@@ -196,7 +196,7 @@ func doLog(out *Result) {
 	p := out.Exponent
 	bitlo := ktobit(p, out.Begink)
 	bithi := ktobit(p, out.Endk)
-	fmt.Printf("--- %f %f\n", bitlo, bithi)
+	//fmt.Printf("--- %f %f\n", bitlo, bithi)
 	if bitlo <= 1 {
 		out.Begink.SetInt64(1)
 		bitlo = 1.0
@@ -325,10 +325,12 @@ func kfrombit(P uint64, bit uint) *big.Int {
 	return K2
 }
 func ktobit(P uint64, K *big.Int) float64 {
+	One:= big.NewInt(1)
 	Q := new(big.Int)
 	Q.SetUint64(P)
 	Q.Lsh(Q, 1)
 	Q.Mul(Q, K)
+	Q.Add(Q, One)
 	x, _ := Q.Float64()
 	return math.Log2(x)
 }
