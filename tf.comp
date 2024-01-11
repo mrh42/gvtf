@@ -470,42 +470,30 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	A = X.L;
 }
 
+//
+// This isn't fast, but it is only used for initialization.
+//
 bool Mod0(uint128 X, uint64_t Q) {
+	if (X.Hi == 0) {
+		return (X.Lo % Q) == 0;
+	}
 	uint128 Y, D;
 	int i = 0;
-	double qinv = 0.99999999999 / double(Q);
-	while (i < 5000 && Cmp(X, Q) > 0) {
+	double qinv = 0.9999999999999 / double(Q);
+	while (i < 10 && Cmp(X, Q) > 0) {
 		double x = toF(X);
 		double xqi = x * qinv;
 		fto128(xqi, D);
 		if (Zero(D)) {
 			D.Lo = 1;
 		}
-		uint192 YY;
-		uint128 QQ; QQ.Hi = 0; QQ.Lo = Q;
-		Mul192x(D, QQ, YY);
-		Sub(X, YY.L);
+		Mul128(D, Q, Y);
+		Sub(X, Y);
 		i++;
 	}
 	return Zero(X) || X.Lo == Q;
 }
 
-/*
-uint64_t Mod(uint64_t X, uint b, double qinv) {
-
-	int i = 0;
-	while (i < 10 && X > b) {
-		uint64_t D = uint64_t(double(X) * qinv);
-		if (D == 0) {D = 1;}
-		uint64_t Y = D * b;
-		X -= Y;
-		i++;
-	}
-	//if (i > 1) Debug[1]++;
-	if (X == b) {X = 0;}
-	return X;
-}
-*/
 
 bool tf(uint128 k) {
 	uint128 sq, q;
@@ -549,7 +537,7 @@ void main() {
 			multiply64to128(P, uint64_t(i), Q);
 			Lsh(Q);
 			Inc(Q);
-			       
+       
 			uint64_t qa7 = Q.Lo & 7;
 			bool y = (qa7 == 3) || (qa7 == 5) || Mod0(Q,3) ||
 				Mod0(Q,5) || (Mod0(Q,7)) || Mod0(Q,11) || Mod0(Q,13) ||
