@@ -164,11 +164,18 @@ void Inc(inout uint128 A) {
 		A.Hi += 1;
 	}
 }
-void Sub(inout uint128 A, uint128 B) {
+void Subx(inout uint128 A, uint128 B) {
 	uint64_t x = A.Lo - B.Lo;
 	uint64_t C = (((x & B.Lo) & 1l) + (B.Lo >> 1) + (x >> 1)) >> 63;
 	A.Hi = A.Hi - (B.Hi + C);
 	A.Lo = x;
+}
+void Sub(inout uint128 A, uint128 B) {
+	uint64_t x = A.Lo - B.Lo;
+	uint C = 0;
+	if (x > A.Lo) {C++;}
+	A.Lo = x;
+	A.Hi = A.Hi - (B.Hi + C);
 }
 void Sub(inout uint256 A, uint256 B) {
 	uint64_t x = A.L.Lo - B.L.Lo;
@@ -383,6 +390,9 @@ const 	double p64 =  18446744073709551616.0lf;
 const	double p128 = 340282366920938463463374607431768211456.0lf;
 const	double p192 = 6277101735386680763835789423207666416102355444464034512896.0lf;
 
+double toF(uint64_t A) {
+	return double(A);
+}
 double toF(uint128 A) {
 	return double(A.Lo) + double(A.Hi) * p64;
 }
@@ -414,8 +424,7 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
 	// Always guess D a little low, and refine our guess as we get closer.
 	// normally takes 2 passes.
-	while (i < 10 && Cmp(X, Q) > 0) {
-
+	while (i < 5 && Cmp(X, Q) > 0) {
 		double x = toF(X);
 		fto128(x*qinv, D);
 		if (Zero(D)) {
@@ -460,6 +469,27 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
 	A = X.L;
 }
+
+bool Mod0(uint128 X, uint64_t Q) {
+	uint128 Y, D;
+	int i = 0;
+	double qinv = 0.99999999999 / double(Q);
+	while (i < 5000 && Cmp(X, Q) > 0) {
+		double x = toF(X);
+		double xqi = x * qinv;
+		fto128(xqi, D);
+		if (Zero(D)) {
+			D.Lo = 1;
+		}
+		uint192 YY;
+		uint128 QQ; QQ.Hi = 0; QQ.Lo = Q;
+		Mul192x(D, QQ, YY);
+		Sub(X, YY.L);
+		i++;
+	}
+	return Zero(X) || X.Lo == Q;
+}
+
 /*
 uint64_t Mod(uint64_t X, uint b, double qinv) {
 
@@ -515,12 +545,17 @@ void main() {
 				// All threads return here.
 				return;
 			}
-			uint64_t p64 = P;
-			uint64_t q = (p64) * 2 * i + 1;
-			bool x = (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) ||
-				  (q%5 == 0) || (q%7 == 0) || (q%11 == 0) || (q%13 == 0) ||
-				  (q%17 == 0) || (q%19 == 0) || (q%23 == 0));
-			if (!x) {
+			uint128 Q;	     
+			multiply64to128(P, uint64_t(i), Q);
+			Lsh(Q);
+			Inc(Q);
+			       
+			uint64_t qa7 = Q.Lo & 7;
+			bool y = (qa7 == 3) || (qa7 == 5) || Mod0(Q,3) ||
+				Mod0(Q,5) || (Mod0(Q,7)) || Mod0(Q,11) || Mod0(Q,13) ||
+				Mod0(Q,17) || Mod0(Q,19) || Mod0(Q,23);
+
+			if (!y) {
 				uint o = atomicAdd(Ll, 1);
 				List[o] = i;
 			}
@@ -528,8 +563,7 @@ void main() {
 			// this table allows a 12% speedup later
 			//
 			if (i < M2) {
-				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||
-					    (q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
+				X2[i] = ! (Mod0(Q,29)||Mod0(Q,31) || Mod0(Q,37)||Mod0(Q,41) || Mod0(Q,43));
 			}
 		}
 		// no threads reach here.
