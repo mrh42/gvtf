@@ -164,13 +164,13 @@ void Inc(inout uint128 A) {
 		A.Hi += 1;
 	}
 }
-void Subx(inout uint128 A, uint128 B) {
+void Sub(inout uint128 A, uint128 B) {
 	uint64_t x = A.Lo - B.Lo;
 	uint64_t C = (((x & B.Lo) & 1l) + (B.Lo >> 1) + (x >> 1)) >> 63;
 	A.Hi = A.Hi - (B.Hi + C);
 	A.Lo = x;
 }
-void Sub(inout uint128 A, uint128 B) {
+void Subx(inout uint128 A, uint128 B) {
 	uint64_t x = A.Lo - B.Lo;
 	uint C = 0;
 	if (x > A.Lo) {C++;}
@@ -493,7 +493,6 @@ bool Mod0(uint128 X, uint64_t Q) {
 	}
 	return Zero(X) || X.Lo == Q;
 }
-
 
 bool tf(uint128 k) {
 	uint128 sq, q;

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"flag"
+	"io"
 	"os"
 	"os/user"
 	"bufio"
@@ -64,10 +65,67 @@ type Result struct {
 	User       string     `json:"user"`
 	Computer   string     `json:"computer,omitempty"`
 
-	kfactors   []*big.Int  // not written.
+	// not written.
+	kfactors   []*big.Int
+	krestart   *big.Int
 }
 
-func initInput(P uint64) {
+
+func (r *Result) checkpoint(k *big.Int) {
+	r.krestart.Set(k)
+}
+
+func (r *Result) checkpointLoop(filename string, done chan struct{}) {
+	ch := make(chan struct{})
+	go func() {
+		for {
+			time.Sleep(60 * time.Second)
+			ch <-struct{}{}
+		}
+	}()
+	One := big.NewInt(1)
+	for {
+		select {
+		case <-done:
+			fmt.Printf("checkpointLoop(): done\n")
+			return
+		case <-ch:
+			if r.krestart.Cmp(One) > 0 {
+				x := map[string]interface{}{"K":r.krestart, "Kfactors":r.kfactors}
+				j, _ := json.Marshal(x)
+
+				f, err := os.OpenFile(filename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+				if err == nil {
+					f.Write(j)
+					f.Close()
+				}
+			}
+		}
+	}
+}
+
+func (r *Result) readcheckpoint(filename string) {
+	f, err := os.Open(filename)
+	if err == nil {
+		data, err := io.ReadAll(f)
+		if err == nil {
+			x := struct{
+				K *big.Int
+				Kfactors []*big.Int}{}
+			err = json.Unmarshal(data, &x)
+			if err == nil {
+				fmt.Printf("# readcheckpoint(): starting with %s\n", data)
+				r.krestart = x.K
+				r.kfactors = x.Kfactors
+			} else {
+				fmt.Printf("rcp: %s\n", err)
+			}
+		}
+	}
+}
+
+
+func initInput(P uint64) int {
 	//p := C.mrhGetMap();
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 	
@@ -80,7 +138,8 @@ func initInput(P uint64) {
 	// Run the shader with init==0
 	C.runCommandBuffer()
 	if p.Ll != C.ListLen {
-		fmt.Fprintf(os.Stdout, "# -------- Something went wrong during init: P.L %d P.Ll %d ListLen %d\n", p.L, p.Ll, C.ListLen)
+		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.L %d P.Ll %d != ListLen %d\n", p.L, p.Ll, C.ListLen)
+		return -1;
 	}
 
 	p.L = 0
@@ -88,6 +147,7 @@ func initInput(P uint64) {
 	p.Init = 1
 
 	C.mrhUnMap()
+	return 0;
 }
 
 func u64n(N *big.Int, pos uint) uint64 {
@@ -109,18 +169,24 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
-func tfRun(P uint64, K1, K2 *big.Int, result *Result) {
+func (result *Result) tfRun() {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
+	K1 := result.Begink
+	K2 := result.Endk
 
 	//K1 = C.M * (K1/C.M);
 	M := big.NewInt(C.M)
 	K := new(big.Int)
-	K.Div(K1, M)
+	K.Set(K1)
+	if K.Cmp(result.krestart) < 0 {
+		K.Set(result.krestart)
+	}
+
+	K.Div(K, M)
 	K.Mul(K, M)
 
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
-
 
 	p.L = 0
 	p.Init = 1
@@ -128,11 +194,13 @@ func tfRun(P uint64, K1, K2 *big.Int, result *Result) {
 		p.Found[i][0] = 0
 		p.Found[i][1] = 0
 	}
-
+	if result.kfactors == nil {
+		result.kfactors = make([]*big.Int, 0, 10)
+	}
 	M2 := big.NewInt(C.M2)
-	kfound := make([]*big.Int, 0, 10)
-	mrhDone := false
-	count := 0
+	done := false
+	count := int64(0)
+	startt := time.Now()
 	for {
 		p.Debug[0] = 0
 		p.Debug[1] = 0
@@ -143,47 +211,45 @@ func tfRun(P uint64, K1, K2 *big.Int, result *Result) {
 
 		C.runCommandBuffer()
 
-		//fk64, _ := K.Float64()
-		//lb2 := math.Log2(fk64 * float64(P) * 2.0)
 		count++
-		if (count % 2000) == 0 {
-			fmt.Fprintf(os.Stdout, "# %d %d \n", K, K2)
+		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 60 {
+			percall := elapsed.Milliseconds() / count
+			fmt.Fprintf(os.Stdout, "# K: %d/%d, %d ms/call\n", K, K2, percall)
+			startt = time.Now()
+			count = 0
 		}
-		//fmt.Fprintf(os.Stderr, "%d %d\n", count, p.Debug[0])
-		p.Debug[0] = 0;
-		if p.Debug[1] > 0 {
-			for i := 0; i < 10; i++ {
-				f := big2(p.Found[i][0], p.Found[i][1])
-				f64, _ := f.Float64()
-				if f64 > 0 {
-					kfound = append(kfound, f)
-					flb2 := math.Log2(f64 * float64(P) * 2.0)
-					fmt.Fprintf(os.Stdout, "# %d kfactor %d E: %d D: %d %.4f C: %d\n", P, f, p.Debug[0], p.Debug[1], flb2, count);
 
-					p.Found[i][0] = 0;
-					p.Found[i][1] = 0;
-				}
-			}			
+
+		//fmt.Fprintf(os.Stderr, "%d %d\n", count, p.Debug[0])
+		for i := 0; i < int(p.Debug[1]); i++ {
+			f := big2(p.Found[i][0], p.Found[i][1])
+			result.kfactors = append(result.kfactors, f)
+
+			f64, _ := f.Float64()
+			flb2 := math.Log2(f64 * float64(result.Exponent) * 2.0)
+			fmt.Fprintf(os.Stdout, "# %d kfactor %d E: %d D: %d %.4f C: %d\n",
+					result.Exponent, f, p.Debug[0], p.Debug[1], flb2, count);
 		}
+
 		if K.Cmp(K2) > 0 {
-			mrhDone = true
+			done = true
 		}
 		
-		if (mrhDone) {
-			result.kfactors = kfound
+		if (done) {
+			//result.kfactors = kfound
 			result.Begink = K1
 			result.Endk = K
 			break;
 		}
 		
 		if p.L >= p.Ll {
+			result.checkpoint(K)
+
 			K.Add(K, M)
 			p.K[0] = C.uint64_t(u64n(K, 0))
 			p.K[1] = C.uint64_t(u64n(K, 1))
 
 			p.L = 0
-			p.Debug[0] = 0
-			p.Debug[1] = 0
 		}
 	}
 
@@ -192,7 +258,7 @@ func tfRun(P uint64, K1, K2 *big.Int, result *Result) {
 }
 
 //func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
-func doLog(out *Result) {
+func (out *Result) doLog() {
 	p := out.Exponent
 	bitlo := ktobit(p, out.Begink)
 	bithi := ktobit(p, out.Endk)
@@ -291,14 +357,30 @@ func writework(work []*Work, filename string) error {
 	return nil
 }
 
-func runOne(P uint64, K1, K2 *big.Int, result *Result) {
-	initInput(P)
+func (result *Result) runOne(docheckpoint bool) {
+	startt := time.Now()
+	if initInput(result.Exponent) == 0 {
+		elapsed := time.Now().Sub(startt)
+		fmt.Printf("# initInput() took %s\n", elapsed)
 
-	tfRun(P, K1, K2, result)
-	doLog(result)
+		result.krestart = new(big.Int)
+		filename := fmt.Sprintf("%d.ckp", result.Exponent)
+		done := make(chan struct{})
+		if docheckpoint {
+			result.readcheckpoint(filename)
+			go result.checkpointLoop(filename, done)
+		}
+
+		result.tfRun()
+		result.doLog()
+		if docheckpoint {
+			done <- struct{}{}
+			os.Remove(filename)
+		}
+	}
 }
 
-func runWork(filename, username, host string) {
+func runWork(filename, username, host string, docheckpoint bool) {
 	work, err := readwork(filename)
 	if err != nil {
 		fmt.Printf("readwork %s\n", err)
@@ -307,13 +389,13 @@ func runWork(filename, username, host string) {
 	fmt.Printf("read %d work entries\n", len(work))
 
 	for i, w := range work {
-		result := &Result{Exponent:w.exponent, Rangec:true, User:username, Computer:host}
 		K1 := big.NewInt(1)
 		if w.low > 1 {
 			K1 = kfrombit(w.exponent, uint(w.low))
 		}
 		K2 := kfrombit(w.exponent, uint(w.high))
-		runOne(w.exponent, K1, K2, result)
+		result := &Result{Exponent:w.exponent, Rangec:true, User:username, Computer:host, Begink:K1, Endk:K2}
+		result.runOne(docheckpoint)
 
 		writework(work[i+1:], filename)
 	}
@@ -326,6 +408,7 @@ func kfrombit(P uint64, bit uint) *big.Int {
 }
 func ktobit(P uint64, K *big.Int) float64 {
 	One:= big.NewInt(1)
+	if K.Cmp(One) == 0 {return 1.0}
 	Q := new(big.Int)
 	Q.SetUint64(P)
 	Q.Lsh(Q, 1)
@@ -339,6 +422,7 @@ func main() {
 	var P uint64
 	var username string
 	var workfile string
+	var docheckpoint bool
 	
 	u, _ := user.Current()
 	host, _ := os.Hostname()
@@ -346,6 +430,7 @@ func main() {
 	// 4112322971, 4113809639, 6000003419, 6000003437, 6000003167
 	flag.Uint64Var(&P, "exponent", 4112322971, "The exponent to test")
 	flag.StringVar(&workfile, "worktodo", "", "worktodo filename")
+	flag.BoolVar(&docheckpoint, "checkpoint", false, "do checkpoints while running")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Uint("bithi", 68, "bit limit to test to")
@@ -363,7 +448,7 @@ func main() {
 	}
 
 	if workfile != "" {
-		runWork(workfile, username, host)
+		runWork(workfile, username, host, docheckpoint)
 	} else {
 		K1 := new(big.Int)
 		if *B1 == 0 {
@@ -378,8 +463,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%d doesn't look prime. How about %d instead?\n", P, nextP(P))
 			os.Exit(1)
 		}
-		result := &Result{Exponent:P, Rangec:true, User:username, Computer:host}
-		runOne(P, K1, K2, result)
+		result := &Result{Exponent:P, Rangec:true, User:username, Computer:host, Begink:K1, Endk:K2}
+		result.runOne(docheckpoint)
 	}
 	C.cleanup()
 }

@@ -85,7 +85,13 @@ void Lsh(inout uint192 A) {
 	Lsh(A.H);
 	A.H.x[0] |= c >> 31;
 }
-
+int Cmp(uint96 A, uint B) {
+	if (A.x[2] > 0) {return 1;}
+	if (A.x[1] > 0) {return 1;}
+	if (A.x[0] > B) {return 1;}
+	if (A.x[0] < B) {return -1;}
+	return 0;
+}
 int Cmp(uint96 A, uint96 B) {
 	if (A.x[2] > B.x[2]) {return 1;}
 	if (A.x[2] < B.x[2]) {return -1;}
@@ -280,6 +286,37 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	A = X.L;
 }
 
+void to96(uint64_t n, inout uint96 o) {
+	uint p0 = uint(n);      // lower 32-bits
+	uint p1 = uint(n>>32);  // upper 32-bits
+	o.x = uvec3(p0, p1, 0);
+}
+//
+// This isn't fast, but it is only used for initialization.
+//
+bool Mod0(uint96 X, uint Q) {
+	if (X.x[2] == 0) {
+		uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
+		return (x64 % Q) == 0;
+	}
+	uint96 D, QQ;
+	uint192 Y;
+	int i = 0;
+	double qinv = 0.9999999999999 / double(Q);
+	QQ.x = uvec3(Q, 0, 0);
+	while (i < 10 && Cmp(X, Q) > 0) {
+		double x = toF(X);
+		double xqi = x * qinv;
+		fto96(xqi, D);
+		if (Zero(D)) {
+			D.x[0] = 1;
+		}
+		Mul192(D, QQ, Y);
+		Sub(X, Y.L);
+		i++;
+	}
+	return Zero(X) || X == QQ;
+}
 
 bool tf(uint96 k) {
 	uint96 sq, q, pp;
@@ -287,9 +324,7 @@ bool tf(uint96 k) {
 
 	int top = int(findMSB(P));
 	// q = 2 * p * k + 1
-	uint p0 = uint(P);      // lower 32-bits
-	uint p1 = uint(P>>32);  // upper 32-bits
-	pp.x = uvec3(p0, p1, 0);
+	to96(P, pp);
 	Mul192(k, pp, t);
 	q = t.L;  // q is limited to 96-bits
 	Lsh(q);
@@ -322,12 +357,20 @@ void main() {
 				// All threads return here.
 				return;
 			}
-			uint64_t p64 = P;
-			uint64_t q = (p64) * 2 * i + 1;
-			bool x = (((q&7) == 3) || ((q&7) == 5) || (q%3 == 0) ||
-				  (q%5 == 0) || (q%7 == 0) || (q%11 == 0) || (q%13 == 0) ||
-				  (q%17 == 0) || (q%19 == 0) || (q%23 == 0));
-			if (!x) {
+			uint96 K, Q, pp;
+			uint192 t;
+			to96(P, pp);
+			K.x = uvec3(i, 0, 0);
+			Mul192(K, pp, t);
+			Q = t.L;  // q is limited to 96-bits
+			Lsh(Q);
+			Inc(Q);
+
+			uint qa7 = Q.x[0] & 7;
+			bool y = (qa7 == 3) || (qa7 == 5) || Mod0(Q,3) ||
+				Mod0(Q,5) || (P,Mod0(Q,7)) || Mod0(Q,11) || Mod0(Q,13) ||
+				Mod0(Q,17) || Mod0(Q,19) || Mod0(Q,23);
+			if (!y) {
 				uint o = atomicAdd(Ll, 1);
 				List[o] = i;
 			}
@@ -335,8 +378,7 @@ void main() {
 			// this table allows a 12% speedup later
 			//
 			if (i < M2) {
-				X2[i] = ! (((q % 29) == 0 ||(q % 31) == 0 ||
-					    (q % 37) == 0||(q % 41) == 0 || (q % 43) == 0));
+				X2[i] = ! (Mod0(Q,29)||Mod0(Q,31) || Mod0(Q,37)||Mod0(Q,41) || Mod0(Q,43));
 			}
 		}
 		// no threads reach here.
