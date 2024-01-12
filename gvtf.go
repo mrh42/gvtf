@@ -87,7 +87,7 @@ func (r *Result) checkpointLoop(filename string, done chan struct{}) {
 	for {
 		select {
 		case <-done:
-			fmt.Printf("checkpointLoop(): done\n")
+			//fmt.Printf("# checkpointLoop(): done\n")
 			return
 		case <-ch:
 			if r.krestart.Cmp(One) > 0 {
