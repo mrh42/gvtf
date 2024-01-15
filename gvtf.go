@@ -169,9 +169,13 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
-func timeremaining(K, K2, LastK *big.Int, e time.Duration) time.Duration {
+func timeremaining(K, K2, LastK *big.Int, e time.Duration) (time.Duration, float64) {
 	L := new(big.Int)
 	L.Sub(K2, K)
+
+	// not exactly right, but close enough
+	ghzdays, _ := L.Float64()
+	ghzdays /= 2465155716822.9
 
 	E := big.NewInt(int64(e.Seconds()))
 	R := new(big.Int)
@@ -180,7 +184,7 @@ func timeremaining(K, K2, LastK *big.Int, e time.Duration) time.Duration {
 
 	L.Div(L, R)
 	d := L.Int64()
-	return time.Duration(d) * time.Second
+	return time.Duration(d) * time.Second, ghzdays
 }
 
 func (result *Result) tfRun() {
@@ -229,10 +233,10 @@ func (result *Result) tfRun() {
 
 		count++
 		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 30 {
-			remain := timeremaining(K, K2, LastK, elapsed)
+			remain, g := timeremaining(K, K2, LastK, elapsed)
 			percall := elapsed.Milliseconds() / count
-			fmt.Fprintf(os.Stdout, "# K: %d/%d, %d ms/call %s remaining\n",
-				K, K2, percall, remain)
+			fmt.Fprintf(os.Stdout, "# K: %d/%d, ms/call: %d, remaining: %s %.1f ghzdays\n",
+				K, K2, percall, remain, g)
 			startt = time.Now()
 			count = 0
 			LastK.Set(K)
