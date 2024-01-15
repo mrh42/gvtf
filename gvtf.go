@@ -79,7 +79,7 @@ func (r *Result) checkpointLoop(filename string, done chan struct{}) {
 	ch := make(chan struct{})
 	go func() {
 		for {
-			time.Sleep(60 * time.Second)
+			time.Sleep(30 * time.Second)
 			ch <-struct{}{}
 		}
 	}()
@@ -169,6 +169,20 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
+func timeremaining(K, K2, LastK *big.Int, e time.Duration) time.Duration {
+	L := new(big.Int)
+	L.Sub(K2, K)
+
+	E := big.NewInt(int64(e.Seconds()))
+	R := new(big.Int)
+	R.Sub(K, LastK)
+	R.Div(R, E)
+
+	L.Div(L, R)
+	d := L.Int64()
+	return time.Duration(d) * time.Second
+}
+
 func (result *Result) tfRun() {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 	K1 := result.Begink
@@ -201,6 +215,8 @@ func (result *Result) tfRun() {
 	done := false
 	count := int64(0)
 	startt := time.Now()
+	LastK := new(big.Int)
+	LastK.Set(K)
 	for {
 		p.Debug[0] = 0
 		p.Debug[1] = 0
@@ -212,11 +228,14 @@ func (result *Result) tfRun() {
 		C.runCommandBuffer()
 
 		count++
-		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 60 {
+		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 30 {
+			remain := timeremaining(K, K2, LastK, elapsed)
 			percall := elapsed.Milliseconds() / count
-			fmt.Fprintf(os.Stdout, "# K: %d/%d, %d ms/call\n", K, K2, percall)
+			fmt.Fprintf(os.Stdout, "# K: %d/%d, %d ms/call %s remaining\n",
+				K, K2, percall, remain)
 			startt = time.Now()
 			count = 0
+			LastK.Set(K)
 		}
 
 
@@ -331,6 +350,9 @@ func readwork(filename string) ([]*Work, error) {
 		f := strings.Split(s, "=")
 		if len(f) == 2 && f[0] == "Factor" {
 			e := strings.Split(f[1], ",")
+			if len(e) == 4 {
+				e = e[1:]
+			}
 			if len(e) == 3 {
 				w := &Work{}
 				w.exponent, err = strconv.ParseUint(e[0], 10, 64)
