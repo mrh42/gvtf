@@ -35,23 +35,14 @@ layout (local_size_x = 64) in;
 layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
-	uint        Init;       // If this is 0, then we setup our tables once.
+	uint        Init;       // If this is 1, then we setup our tables once.
 	uint        L;          // threads use atomicAdd(L, 1) to get next next list index
 	uint        Ll;         // Length of List
 	uint        KmodM2;
-	uint64_t    Z;          // used by Init for atomicAdd(Z, 1)
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
+	uint        NFound;
 	uint        Debug[2];   // output only used for debugging
-};
-
-
-// This is allocated in DEVICE_LOCAL memory, not shared with host.  See CPU code to see how this is allocated.
-// This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
-layout(binding = 1) buffer buf2
-{
-	uint       List[ListN];
-	bool       X2[M2];
 };
 
 struct uint96 {
@@ -62,6 +53,17 @@ struct uint192 {
 	uint96 H;
 	uint96 L;
 };
+
+// This is allocated in DEVICE_LOCAL memory, not shared with host.  See CPU code to see how this is allocated.
+// This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
+layout(binding = 1) buffer buf2
+{
+	uint       List[ListN];
+	bool       X2[M2];
+	int        PreTop;
+	uint96     PreSq;
+};
+
 bool Zero(uint96 A) {
 	return A.x[0] == 0 && A.x[1] == 0 && A.x[2] == 0;
 }
@@ -266,15 +268,28 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 		Lsh(X);
 	}
 
+	// it is faster to do this w/o testing, even if D might be zero and have no effect.
+	if (true) {
+		double xqi = toF(X)*qinv;
+		fto96(xqi, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+
+		xqi = toF(X)*qinv;
+		fto96(xqi, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+	}
 	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
 
 	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
 	// Always guess D a little low, and refine our guess as we get closer.
 	// normally takes 2 passes.
 	//
-	while (i < 5 && Cmp(X, Q) > 0) {
+	//while (i < 5 && Cmp(X, Q) > 0) {
+	if (Cmp(X, Q) > 0) {
 		double xqi = toF(X)*qinv;
-		//double xqi = toF(X)/qinv;
+
 		fto96(xqi, D);
 		if (Zero(D)) {
 			D.x[0] = 1;
@@ -282,6 +297,9 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 		Mul192(D, Q, Y);
 		Sub(X, Y);
 		i++;
+	}
+	if (i > 1) {
+		atomicAdd(Debug[0], 1);
 	}
 	A = X.L;
 }
@@ -339,7 +357,8 @@ bool tf(uint96 k) {
 	//  then compute mod Q.
 	uint64_t one = 1L;
 	sq.x = uvec3(1, 0, 0);
-	for (int b = top; b >= 0; b--) {
+	sq = PreSq; // Start from the pre-computed point
+	for (int b = PreTop; b >= 0; b--) {
 		bool bb;
 		bb = (P & (one << b)) != 0;
 		SqMod(sq, q, bb, qinv);
@@ -348,9 +367,56 @@ bool tf(uint96 k) {
 	return sq.x[0] == 1 && sq.x[1] == 0 && sq.x[2] == 0;
 }
 
+//
+// The squaring rounds are all the same, until Sq>Q.  So we can pre-compute those.
+//
+void pretf(uint96 k) {
+	uint96 sq, q, pp;
+	uint192 t;
+
+	int top = int(findMSB(P));
+	// q = 2 * p * k + 1
+	to96(P, pp);
+	Mul192(k, pp, t);
+	q = t.L;  // q is limited to 96-bits
+	Lsh(q);
+	Inc(q);
+
+	uint192 X;
+	// Do the TF math: Starting with 1, repeatedly square,
+	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
+	//  precompute until sq > q.
+	uint64_t one = 1L;
+	sq.x = uvec3(1, 0, 0);
+	for (int b = top; b >= 0; b--) {
+		bool bb = (P & (one << b)) != 0;
+		Mul192(sq, sq, X);
+		if (bb) {
+			Lsh(X);
+		}
+		if (Cmp(X, q) > 0) {
+			break;
+		}
+		// later we start from this point.
+		sq = X.L;
+		PreTop = b-1;
+		PreSq = sq;
+	}
+}
+
 void main() {
 	//uint I = gl_GlobalInvocationID.x;
-	if (Init == 0) {
+	if (Init == 2) {
+		uint I = gl_GlobalInvocationID.x;
+		if (I == 1) {
+			uint96 k;
+			k.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
+			Inc(k);
+			pretf(k);
+		}
+		return;
+	}
+	if (Init == 1) {
 		while (true) {
 			uint i = atomicAdd(L, 1);
 			if (i >= M) {
@@ -420,11 +486,10 @@ void main() {
 		
 		if (tf(k)) {
 			// How many have we found?
-			uint f = atomicAdd(Debug[1], 1);
+			uint f = atomicAdd(NFound, 1);
 			// return the 96-bit K
 			Found[f][0] = k.x[0] | uint64_t(k.x[1]) << 32;
 			Found[f][1] = k.x[2];
-			//Found[f][2] = k.x[2];
 		}
 		return;
 	}

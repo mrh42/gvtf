@@ -29,37 +29,12 @@
 // about 278MB.  Each thread takes an offset from the list, adds it to the 96-bit base-K, then
 // computes P * K * 2 + 1, which is then TF tested.
 // When the entire list has been tested, K-base += M.
-#define M (4 * 3L * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
+#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
-#define M3 (47 * 53 * 59 * 61)                 //  8,965,109
 
 #define ListN 72990720
 //#define ListN 2043740170
 layout (local_size_x = 64) in;
-
-// This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
-// it is somewhat slow, compared to DEVICE_LOCAL memory.
-layout(binding = 0) buffer buf
-{	
-	uint64_t    P;          // input from CPU side
-	uint        Init;       // If this is 0, then we setup our tables once.
-	uint        L;          // threads use atomicAdd(L, 1) to get next next list index
-	uint        Ll;         // Length of List
-	uint        KmodM2;
-	uint64_t    Z;          // used by Init for atomicAdd(Z, 1)
-	uint64_t    K[2];       // base K input from CPU side
-	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
-	uint        Debug[2];   // output only used for debugging
-};
-
-
-// This is allocated in DEVICE_LOCAL memory, not shared with host.  See CPU code to see how this is allocated.
-// This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
-layout(binding = 1) buffer buf2
-{
-	uint       List[ListN];
-	bool       X2[M2];
-};
 
 struct uint128 {
 	uint64_t Hi, Lo;
@@ -72,11 +47,34 @@ struct uint192 {
 	uint128 L;
 };
 
-void Set(inout uint256 A, uint128 B) {
-	A.L = B;
-	A.H.Lo = 0;
-	A.H.Hi = 0;
-}
+// This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
+// it is somewhat slow, compared to DEVICE_LOCAL memory.
+layout(binding = 0) buffer buf
+{	
+	uint64_t    P;          // input from CPU side
+	uint        Init;       // If this is 1, then we setup our tables once.
+	uint        L;          // threads use atomicAdd(L, 1) to get next next list index
+	uint        Ll;         // Length of List
+	uint        KmodM2;
+	uint64_t    K[2];       // base K input from CPU side
+	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
+	uint        NFound;
+	uint        Debug[2];   // output only used for debugging
+};
+
+
+// This is allocated in DEVICE_LOCAL memory, not shared with host.  See CPU code to see how this is allocated.
+// This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
+layout(binding = 1) buffer buf2
+{
+	uint       List[ListN];
+	bool       X2[M2];
+	int        PreTop;
+	uint128     PreSq;
+};
+
+
+
 void Lsh(inout uint128 A) {
 	uint64_t c = A.Lo & (uint64_t(1) << 63);
 	A.Lo <<= 1;
@@ -96,6 +94,41 @@ void Lsh(inout uint192 A) {
 	Lsh(A.L);
 	A.H <<= 1;
 	A.H |= c >> 63;
+}
+void Lsh32(inout uint192 A) {
+	//uint64_t lowbits = 0xfffffffful;
+	uint64_t a0, a1, a2;
+
+	a0 = A.L.Lo << 32;
+	a1 = A.L.Lo >> 32 | A.L.Hi << 32;
+	a2 = A.L.Hi >> 32 | A.H << 32;
+	A.H = a2;
+	A.L.Hi = a1;
+	A.L.Lo = a0;
+}
+void Lsh8(inout uint192 A) {
+	uint64_t a0, a1, a2;
+
+	a0 = A.L.Lo << 8;
+	a1 = A.L.Lo >> 56 | A.L.Hi << 8;
+	a2 = A.L.Hi >> 56 | A.H << 8;
+	A.H = a2;
+	A.L.Hi = a1;
+	A.L.Lo = a0;
+}
+void Lsh(inout uint192 A, int b) {
+	while (b >= 32) {
+		Lsh32(A);
+		b -= 32;
+	}
+	while (b >= 8) {
+		Lsh8(A);
+		b -= 8;
+	}
+	while (b > 0) {
+		Lsh(A);
+		b--;
+	}
 }
 
 void Rsh(inout uint128 A) {
@@ -206,6 +239,15 @@ void Sub(inout uint192 A, uint192 B) {
 
 	A.H = A.H - (B.H + C);
 }
+void Sub(uint192 A, uint192 B, inout uint192 C) {
+	C.L.Lo = A.L.Lo - B.L.Lo;
+
+        C.L.Hi = A.L.Hi - B.L.Hi;
+	if (C.L.Lo > A.L.Lo) {C.L.Hi -= 1;}
+
+	C.H = A.H - B.H;
+	if (C.L.Hi > A.L.Hi) {C.H -= 1;} 
+}
 void Add(inout uint128 A, uint128 B) {
 	uint64_t x = A.Lo + B.Lo;
 	uint64_t C = 0;
@@ -296,6 +338,7 @@ void Sq192(uint128 A, inout uint192 X) {
 	}
 	X.H += T.Hi;
 }
+/*
 void Mul192x(uint128 A, uint128 B, out uint192 R) {
 	uint64_t lb = 0xfffffffful;
 	uint64_t x00 = (A.Lo & lb) * (B.Lo & lb);
@@ -315,23 +358,22 @@ void Mul192x(uint128 A, uint128 B, out uint192 R) {
 	R.L.Hi = (n & lb) | (o << 32);
 	R.H = (o >> 32) + x22;
 }
-// something suspect with this one
-/*
+
 void Sq192x(uint128 A, out uint192 R) {
 	uint64_t lb = 0xfffffffful;
-	uint64_t alh = A.Lo >> 32;
-	uint64_t all = A.Lo & lb;
-	uint64_t ahl = A.Hi & lb;
-	uint64_t x00 = (all) * (all);
-	uint64_t x01 = (all) * (alh);
-	uint64_t x02 = (all) * (ahl);
-	uint64_t x11 = (alh) * (alh);
-	uint64_t x12 = (alh) * (ahl);
-	uint64_t x22 = (ahl) * (ahl);
+	uint64_t x00 = (A.Lo & lb) * (A.Lo & lb);
+	uint64_t x01 = (A.Lo & lb) * (A.Lo >> 32);
+	uint64_t x02 = (A.Lo & lb) * (A.Hi & lb);
+	uint64_t x10 = x01;
+	uint64_t x11 = (A.Lo >> 32) * (A.Lo >> 32);
+	uint64_t x12 = (A.Lo >> 32) * (A.Hi & lb);
+	uint64_t x20 = x02;
+	uint64_t x21 = x12;
+	uint64_t x22 = (A.Hi & lb) * (A.Hi & lb);
 
-	uint64_t m = (x00 >> 32) + x01 + (x01 & lb);
-	uint64_t n = x02 + x11 + x02 + (x01 >> 32) + (m >> 32);
-	uint64_t o = x12 + x12  + (n >> 32);
+	uint64_t m = (x00 >> 32) + x01 + (x10 & lb);
+	uint64_t n = x02 + x11 + x20 + (x10 >> 32) + (m >> 32);
+	uint64_t o = x12 + x21 + (n >> 32);
 	R.L.Lo = (x00 & lb) | (m << 32);
 	R.L.Hi = (n & lb) | (o << 32);
 	R.H = (o >> 32) + x22;
@@ -385,6 +427,8 @@ void Mul256(uint128 A, uint128 B, inout uint256 X) {
 		X.H.Hi++;
 	}
 }
+
+
 // 2^64, 2^128 and 2^192
 const 	double p64 =  18446744073709551616.0lf;
 const	double p128 = 340282366920938463463374607431768211456.0lf;
@@ -443,31 +487,59 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	uint192 X, Y;
 	uint128 D;
 
-	Sq192(A, X);
-	//Mul192(A, A, X);
+	//Sq192x(A, X);
+	Mul192(A, A, X);
 	if (doshift) {
 		Lsh(X);
 	}
+	{
+		double x = toF(X);
+		double xqi = x*qinv;
+		fto128(xqi, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+	    
+		x = toF(X);
+		xqi = x*qinv;
+		fto128(xqi, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+	}
 
-	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
 
+	int i = 0;
+
+	//
 	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
 	// Always guess D a little low, and refine our guess as we get closer.
-	// normally takes 2 passes.
+	// normally takes 2 passes. Can take 0, 1, 2, or 3 passes.  As the numbers get big, our floating point
+	// guess gets less accurate.
 	//
-	while (i < 10 && Cmp(X, Q) > 0) {
+	//while (i < 5 && Cmp(X, Q) > 0) {
+	while (Cmp(X, Q) > 0) {
 		double x = toF(X);
 		double xqi = x*qinv;
 		fto128(xqi, D);
 		if (Zero(D)) {
 			D.Lo = 1;
 		}
-		Mul192x(D, Q, Y);
+		Mul192(D, Q, Y);
 		Sub(X, Y);
 		i++;
 	}
+	if (i > 1) {
+		atomicAdd(Debug[0], 1);
+	}
 	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
+	//if (i == 0) {atomicAdd(Debug[0], 1);}
 	A = X.L;
+}
+int findMSB(uint128 n) {
+	int i = int(findMSB(n.Hi));
+	if (i >= 0) {
+		return 63 + i;
+	}
+	return int(findMSB(n.Lo));
 }
 
 //
@@ -515,24 +587,73 @@ bool tf(uint128 k) {
 	//  then compute mod Q.
 	uint64_t one = 1L;
 	sq.Lo = 1; sq.Hi = 0;
-	for (int b = top; b >= 0; b--) {
+	sq = PreSq;
+	for (int b = PreTop; b >= 0; b--) {
 		bool bb = (P & (one << b)) != 0;
-		SqMod(sq, q, bb, qinv);
+		SqMod9(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;
 }
 
+void pretf(uint128 k) {
+	uint128 sq, q;
+
+	int top = int(findMSB(P));
+
+	// q = 2 * p * k + 1
+	//pp.Lo = P;
+	//pp.Hi = 0;
+	Mul128(k, P, q);
+	Lsh(q);
+	Inc(q);
+
+        // Make our 1/q just a tiny bit too small, so we don't over estimate,
+        // but not so small as to need extra passes.
+	double qinv = 0.99999999999999 / toF(q);
+
+	uint256 X;
+	// Do the TF math: Starting with 1, repeatedly square,
+	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
+	//  then compute mod Q.
+	uint64_t one = 1L;
+	sq.Lo = 1; sq.Hi = 0;
+	for (int b = top; b >= 0; b--) {
+		bool bb = (P & (one << b)) != 0;
+		Sq256(sq, X);
+		if (bb) {
+			Lsh(X);
+		}
+		if (Cmp(X, q) > 0) {
+			break;
+		}
+		sq = X.L;
+		PreTop = b-1;
+		PreSq = sq;
+	}
+}
+
 void main() {
 	//uint I = gl_GlobalInvocationID.x;
-	if (Init == 0) {
+	if (Init == 2) {
+		uint I = gl_GlobalInvocationID.x;
+		if (I == 1) {
+			uint128 k;
+			k.Lo = K[0];
+			k.Hi = K[1];
+			Inc(k);
+			pretf(k);
+		}
+		return;
+	}
+	if (Init == 1) {
 		while (true) {
 			uint i = atomicAdd(L, 1);
 			if (i >= M) {
 				// All threads return here.
 				return;
 			}
-			uint128 Q;	     
+			uint128 Q;   
 			multiply64to128(P, uint64_t(i), Q);
 			Lsh(Q);
 			Inc(Q);
@@ -549,12 +670,14 @@ void main() {
 			//
 			// this table allows a 12% speedup later
 			//
-			if (i < M2) {
-				X2[i] = ! (Mod0(Q,29)||Mod0(Q,31) || Mod0(Q,37)||Mod0(Q,41) || Mod0(Q,43));
+			if (i < M2) {			     
+				X2[i] = (Mod0(Q,29)||Mod0(Q,31) || Mod0(Q,37)||Mod0(Q,41) || Mod0(Q,43));
 			}
 		}
 		// no threads reach here.
 	}
+
+	// Init == 0 ---------->
 	//
 	// K is the base starting value for this invocation. 
 	//
@@ -575,9 +698,9 @@ void main() {
 		// this test gives a speedup of about 12%.
 		// the if-branch itself and mod M2 are fairly expensive
 		//
-		if (X2[(o + KmodM2)%M2] == false) {
-			//uint x = atomicAdd(Debug[0], 1);
-			continue;
+		if (X2[(o + KmodM2)%M2]) {
+			continue;  // let this thread get another one.
+			//return;
 		}
 
 		// offset from the base K
@@ -587,18 +710,15 @@ void main() {
 		// the actual K this thread will test.
 		Add(k, oo);
 
-		// check if something went terribly wrong above.
-		// We didn't find a K to test at all?
+		// if base K and offset are both zero, skip.
 		if (Zero(k)) {return;}
-		//return;
-		
+
 		if (tf(k)) {
 			// How many have we found?
-			uint f = atomicAdd(Debug[1], 1);
-			// return the 96-bit K
+			uint f = atomicAdd(NFound, 1);
+			// return the 128-bit K
 			Found[f][0] = k.Lo;
 			Found[f][1] = k.Hi;
-			//Found[f][2] = k.x[2];
 		}
 		return;
 	}

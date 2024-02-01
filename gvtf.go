@@ -131,20 +131,21 @@ func initInput(P uint64) int {
 	
 	p.P = C.uint64_t(P)
 
-	p.Init = 0
+	p.Init = 1
 	p.L = 0
 	p.Ll = 0
-	p.Z = 0
+	p.Debug[0] = 0
+
 	// Run the shader with init==0
 	C.runCommandBuffer()
 	if p.Ll != C.ListLen {
 		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.L %d P.Ll %d != ListLen %d\n", p.L, p.Ll, C.ListLen)
 		return -1;
 	}
-
+	//fmt.Printf("debug: %d\n", p.Debug[0])
 	p.L = 0
-	// from now on, init==1
-	p.Init = 1
+	// from now on, init==0
+	p.Init = 0
 
 	C.mrhUnMap()
 	return 0;
@@ -169,13 +170,18 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
+func estGhzDays(K *big.Int) (ghzdays float64) {
+	ghzdays, _ = K.Float64()
+	ghzdays /= 2465155716822.9
+	return
+}
+
 func timeremaining(K, K2, LastK *big.Int, e time.Duration) (time.Duration, float64) {
 	L := new(big.Int)
 	L.Sub(K2, K)
 
 	// not exactly right, but close enough
-	ghzdays, _ := L.Float64()
-	ghzdays /= 2465155716822.9
+	ghzdays := estGhzDays(L)
 
 	E := big.NewInt(int64(e.Seconds()))
 	R := new(big.Int)
@@ -206,8 +212,16 @@ func (result *Result) tfRun() {
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
 
+	M2 := big.NewInt(C.M2)
+	KmM2 := new(big.Int)
+	KmM2.Mod(K, M2)
+	p.KmodM2 = C.uint(KmM2.Uint64())
+
+	p.Init = 2;
+	C.runCommandBuffer()
+	p.Init = 0;
+
 	p.L = 0
-	p.Init = 1
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
 		p.Found[i][1] = 0
@@ -215,43 +229,42 @@ func (result *Result) tfRun() {
 	if result.kfactors == nil {
 		result.kfactors = make([]*big.Int, 0, 10)
 	}
-	M2 := big.NewInt(C.M2)
 	done := false
 	count := int64(0)
-	startt := time.Now()
 	LastK := new(big.Int)
 	LastK.Set(K)
+	startt := time.Now()
 	for {
+		p.NFound = 0
 		p.Debug[0] = 0
 		p.Debug[1] = 0
-
-		KmM2 := new(big.Int)
-		KmM2.Mod(K, M2)
-		p.KmodM2 = C.uint(KmM2.Uint64())
 
 		C.runCommandBuffer()
 
 		count++
 		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 30 {
+			L := new(big.Int)
+			L.Sub(K, LastK)
 			remain, g := timeremaining(K, K2, LastK, elapsed)
 			percall := elapsed.Milliseconds() / count
-			fmt.Fprintf(os.Stdout, "# K: %d/%d, ms/call: %d, remaining: %s %.1f ghzdays\n",
-				K, K2, percall, remain, g)
+			fmt.Fprintf(os.Stdout, "# K: %d/%d, ms/call: %d, %.1f ghz-d/d, remaining: %s %.1f ghzdays\n",
+				K, K2, percall, 24.0*estGhzDays(L)/elapsed.Hours(), remain, g)
 			startt = time.Now()
 			count = 0
 			LastK.Set(K)
 		}
 
-
-		//fmt.Fprintf(os.Stderr, "%d %d\n", count, p.Debug[0])
-		for i := 0; i < int(p.Debug[1]); i++ {
+		if p.Debug[0] > 0 {
+			fmt.Fprintf(os.Stderr, "%d %d %d\n", count, p.Debug[0], p.L)
+		}
+		for i := 0; i < int(p.NFound); i++ {
 			f := big2(p.Found[i][0], p.Found[i][1])
 			result.kfactors = append(result.kfactors, f)
 
 			f64, _ := f.Float64()
 			flb2 := math.Log2(f64 * float64(result.Exponent) * 2.0)
-			fmt.Fprintf(os.Stdout, "# %d kfactor %d E: %d D: %d %.4f C: %d\n",
-					result.Exponent, f, p.Debug[0], p.Debug[1], flb2, count);
+			fmt.Fprintf(os.Stdout, "# %d kfactor %s %.4f C: %d\n",
+					result.Exponent, f, flb2, count);
 		}
 
 		if K.Cmp(K2) > 0 {
@@ -259,7 +272,6 @@ func (result *Result) tfRun() {
 		}
 		
 		if (done) {
-			//result.kfactors = kfound
 			result.Begink = K1
 			result.Endk = K
 			break;
@@ -268,10 +280,16 @@ func (result *Result) tfRun() {
 		if p.L >= p.Ll {
 			result.checkpoint(K)
 
+			// advance to the next chunk to test.
 			K.Add(K, M)
 			p.K[0] = C.uint64_t(u64n(K, 0))
 			p.K[1] = C.uint64_t(u64n(K, 1))
+			KmM2.Mod(K, M2)
+			p.KmodM2 = C.uint(KmM2.Uint64())
 
+			p.Init = 2;
+			C.runCommandBuffer()
+			p.Init = 0;
 			p.L = 0
 		}
 	}
@@ -453,7 +471,7 @@ func main() {
 	u, _ := user.Current()
 	host, _ := os.Hostname()
 
-	// 4112322971, 4113809639, 6000003419, 6000003437, 6000003167
+	// 726064763, 4112322971, 4113809639, 6000003419, 6000003437, 6000003167, 6000001031, 6000003743
 	flag.Uint64Var(&P, "exponent", 4112322971, "The exponent to test")
 	flag.StringVar(&workfile, "worktodo", "", "worktodo filename")
 	flag.BoolVar(&docheckpoint, "checkpoint", false, "do checkpoints while running")
