@@ -142,7 +142,7 @@ func initInput(P uint64) int {
 		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.L %d P.Ll %d != ListLen %d\n", p.L, p.Ll, C.ListLen)
 		return -1;
 	}
-	//fmt.Printf("debug: %d\n", p.Debug[0])
+	//fmt.Printf("debug: %d %d\n", p.Debug[0], p.Debug[1])
 	p.L = 0
 	// from now on, init==0
 	p.Init = 0
@@ -193,6 +193,7 @@ func timeremaining(K, K2, LastK *big.Int, e time.Duration) (time.Duration, float
 	return time.Duration(d) * time.Second, ghzdays
 }
 
+
 func (result *Result) tfRun() {
 	p := (*C.struct_Stuff)(C.mrhGetMap());
 	K1 := result.Begink
@@ -212,15 +213,17 @@ func (result *Result) tfRun() {
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
 
-	M2 := big.NewInt(C.M2)
-	KmM2 := new(big.Int)
-	KmM2.Mod(K, M2)
-	p.KmodM2 = C.uint(KmM2.Uint64())
-
 	p.Init = 2;
-	C.runCommandBuffer()
+	p.L = 0;
+	p.L2 = 0;
+	p.L3 = 0;
+	{
+		startt := time.Now()
+		C.runCommandBuffer()
+		elapsed := time.Now().Sub(startt)
+		fmt.Printf("# L2: %d d: %d e: %s\n", p.L2, p.Debug[0], elapsed)
+	}
 	p.Init = 0;
-
 	p.L = 0
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
@@ -246,8 +249,8 @@ func (result *Result) tfRun() {
 			L := new(big.Int)
 			L.Sub(K, LastK)
 			remain, g := timeremaining(K, K2, LastK, elapsed)
-			percall := elapsed.Milliseconds() / count
-			fmt.Fprintf(os.Stdout, "# K: %d/%d, ms/call: %d, %.1f ghz-d/d, remaining: %s %.1f ghzdays\n",
+			percall := float64(elapsed.Milliseconds()) / float64(count)
+			fmt.Fprintf(os.Stdout, "# K: %d/%d, ms/call: %.1f, %.1f ghz-d/d, remaining: %s %.1f ghzdays\n",
 				K, K2, percall, 24.0*estGhzDays(L)/elapsed.Hours(), remain, g)
 			startt = time.Now()
 			count = 0
@@ -284,11 +287,29 @@ func (result *Result) tfRun() {
 			K.Add(K, M)
 			p.K[0] = C.uint64_t(u64n(K, 0))
 			p.K[1] = C.uint64_t(u64n(K, 1))
-			KmM2.Mod(K, M2)
-			p.KmodM2 = C.uint(KmM2.Uint64())
 
 			p.Init = 2;
+			p.L = 0;
+			p.L2 = 0;
+			p.L3 = 0;
 			C.runCommandBuffer()
+			//fmt.Printf("2: d: %d\n", p.Debug[0])
+			if (false) {
+				// Verify the gpu side is working correctly.
+				for i := 0; i < 1000; i++ {
+					//fmt.Printf("L3: %d\n", p.L3)
+					One := big.NewInt(1)
+					P := big.NewInt(int64(result.Exponent))
+					o := big.NewInt(int64(p.Test[i]))
+					kk := new(big.Int).Add(K, o)
+					Q := new(big.Int).Mul(P, kk)
+					Q.Lsh(Q, 1)
+					Q.Add(Q, One)
+					if Q.ProbablyPrime(10) {
+						fmt.Printf("---- %d %d %t\n", i, Q, Q.ProbablyPrime(10))
+					}
+				}
+			}
 			p.Init = 0;
 			p.L = 0
 		}
@@ -405,7 +426,7 @@ func (result *Result) runOne(docheckpoint bool) {
 	startt := time.Now()
 	if initInput(result.Exponent) == 0 {
 		elapsed := time.Now().Sub(startt)
-		fmt.Printf("# initInput() took %s\n", elapsed)
+		fmt.Printf("# initInput(%d) took %s\n", result.Exponent, elapsed)
 
 		result.krestart = new(big.Int)
 		filename := fmt.Sprintf("%d.ckp", result.Exponent)
