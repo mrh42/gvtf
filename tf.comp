@@ -4,7 +4,7 @@
 //#extension GL_ARB_gpu_shader_int64 : enable
 //#extension GL_EXT_debug_printf : enable
 //#extension GL_KHR_shader_subgroup_vote : enable
-#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
 //#extension GL_EXT_shader_explicit_arithmetic_types_int16 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 #extension GL_EXT_shader_atomic_int64: enable
@@ -23,13 +23,15 @@
 // Installing the 'vulkan-amdgpu' package will result in a significant (2.5x) performance increase.
 // also, maybe the difference isn't so much when not using uint64_t math.
 //
-#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
+
+#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23) // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
 #define M3 (47 * 53 * 59 * 61)                      //   8,965,109
 #define M4 (67 * 71 * 73 * 79)                      //  27,433,619
 #define M5 (83 * 89 * 97 * 101)                     //  72,370,439
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
-#define M7 (127 * 131 * 137 * 139)
+#define M7 (127 * 131 * 137 * 139)                  // 316,818,391
+#define M8 (149 * 151 * 157)
 
 #define ListN 72990720
 //#define ListN 2043740170
@@ -75,6 +77,7 @@ layout(binding = 1) buffer buf2
 	uint    X5[1+M5/32];
 	uint    X6[1+M6/32];
 	uint    X7[1+M7/32];
+	uint    X8[1+M8/32];
 };
 
 bool Zero(uint96 A) {
@@ -436,24 +439,27 @@ void pretf(uint96 k) {
 	}
 }
 
+
 void main() {
 	//uint I = gl_GlobalInvocationID.x;
 	if (Init == 2) {
 		uint I = gl_GlobalInvocationID.x;
 		uint96 k;
 		k.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
+		if (I == 1) {
+			uint96 kt = k;
+			Inc(kt);  // incase of 0.
+			pretf(kt);
+			return;
+		}
 		uint kmodm2 = Mod(k, M2);
 		uint kmodm3 = Mod(k, M3);
 		uint kmodm4 = Mod(k, M4);
 		uint kmodm5 = Mod(k, M5);
 		uint kmodm6 = Mod(k, M6);
 		uint kmodm7 = Mod(k, M7);
-		if (I == 1) {
-			uint96 kt = k;
-			Inc(kt);  // incase of 0.
-			pretf(kt);
-		}
-		
+		uint kmodm8 = Mod(k, M8);
+
 		while (true) {
 			uint i = atomicAdd(L, 1);
 
@@ -472,11 +478,13 @@ void main() {
 			bool c6 = 0 == (X6[i6/32] & (1u << (i6%32)));
 			uint i7 = (o + kmodm7)%M7;
 			bool c7 = 0 == (X7[i7/32] & (1u << (i7%32)));
-			if (c2 && c3 && c4 && c5 && c6 && c7)
+			uint i8 = (o + kmodm8)%M8;
+			bool c8 = 0 == (X8[i8/32] & (1u << (i8%32)));
+			if (c2 && c3 && c4 && c5 && c6 && c7 && c8)
 			{
 			     	uint ii = atomicAdd(L2, 1);
 				List2[ii] = List[i];
-			} else if (true) {
+			} else if (false) {
 				// Give a sample of composites back to the CPU for primality testing.
 				// This is just for looking for bugs in the sieving process.
 			     	uint ii = atomicAdd(L3, 1);
@@ -512,6 +520,9 @@ void main() {
 			if (i <= M7/32) {
 				X7[i] = 0;
 			}
+			if (i <= M8/32) {
+				X8[i] = 0;
+			}
 		}
 	}
 	if (Init == 1) {
@@ -532,7 +543,7 @@ void main() {
 
 			uint qa7 = Q.x[0] & 7;
 			bool y = (qa7 == 3) || (qa7 == 5) || Mod0(Q,3) ||
-				Mod0(Q,5) || (P,Mod0(Q,7)) || Mod0(Q,11) || Mod0(Q,13) ||
+				Mod0(Q,5) || Mod0(Q,7) || Mod0(Q,11) || Mod0(Q,13) ||
 				Mod0(Q,17) || Mod0(Q,19) || Mod0(Q,23);
 			if (!y) {
 				uint o = atomicAdd(Ll, 1);
@@ -572,6 +583,12 @@ void main() {
 				bool c = (Mod0(Q,127)||Mod0(Q,131) || Mod0(Q,137)||Mod0(Q,139));
 				if (c) {
 					atomicOr(X7[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M8) {
+				bool c = (Mod0(Q,149)||Mod0(Q,151) || Mod0(Q,157));
+				if (c) {
+					atomicOr(X8[i/32], 1u << (i%32));
 				}
 			}
 		}

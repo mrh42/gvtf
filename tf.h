@@ -6,13 +6,16 @@
 // computes P * K * 2 + 1, which is then TF tested.
 // When the entire list has been tested, K-base += M.
 //
-#define M (4 * 3L * 5 * 7 * 11 * 13 * 17 * 19 * 23) // 446,185,740
+
+#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23) // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
 #define M3 (47 * 53 * 59 * 61)                      //   8,965,109
 #define M4 (67 * 71 * 73 * 79)                      //  27,433,619
 #define M5 (83 * 89 * 97 * 101)                     //  72,370,439
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
 #define M7 (127 * 131 * 137 * 139)                  // 316,818,391
+#define M8 (149 * 151 * 157)                        //   3,532,343
+
 
 #define ListLen 72990720
 //#define ListLen 2043740170
@@ -48,6 +51,7 @@ struct Stuff2 {
 	uint32_t    X5[1+M5/32];
 	uint32_t    X6[1+M6/32];
 	uint32_t    X7[1+M7/32];
+	uint32_t    X8[1+M8/32];
 };
 
 
