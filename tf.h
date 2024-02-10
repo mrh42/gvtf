@@ -12,6 +12,7 @@
 #define M4 (67 * 71 * 73 * 79)                      //  27,433,619
 #define M5 (83 * 89 * 97 * 101)                     //  72,370,439
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
+#define M7 (127 * 131 * 137 * 139)                  // 316,818,391
 
 #define ListLen 72990720
 //#define ListLen 2043740170
@@ -30,18 +31,23 @@ struct Stuff {
 	uint32_t    L3;
 	uint32_t    Test[1000];
 };
+//
 // This is allocated in DEVICE_LOCAL memory, and is not shared with host.
 // This is much to access faster from the shader, especially if the GPU is in a PCIx1 slot.
+// These fields don't need to match the shader directly, the struct just needs to be big enough
+// to allocate enough memory on the GPU for what the shader needs.
+//
 struct Stuff2 {
 	uint32_t    List[ListLen];
 	uint32_t    List2[ListLen];
 	uint32_t    PreTop;
 	uint64_t    PreSq[2];
-	uint32_t    X2[M2];
-	uint32_t    X3[M3];
-	uint32_t    X4[M4];
-	uint32_t    X5[M5];
-	uint32_t    X6[M6];
+	uint32_t    X2[1+M2/32];
+	uint32_t    X3[1+M3/32];
+	uint32_t    X4[1+M4/32];
+	uint32_t    X5[1+M5/32];
+	uint32_t    X6[1+M6/32];
+	uint32_t    X7[1+M7/32];
 };
 
 

@@ -131,6 +131,11 @@ func initInput(P uint64) int {
 	
 	p.P = C.uint64_t(P)
 
+	p.Init = 3
+	p.L = 0
+	C.runCommandBuffer()
+	//fmt.Printf("---- init3 done = %d\n", p.L)
+
 	p.Init = 1
 	p.L = 0
 	p.Ll = 0
@@ -294,10 +299,11 @@ func (result *Result) tfRun() {
 			p.L3 = 0;
 			C.runCommandBuffer()
 			//fmt.Printf("2: d: %d\n", p.Debug[0])
-			if (false) {
+			if (uint(p.L3) > 0) {
+				fmt.Printf("# verify-L3: %d\n", p.L3)
 				// Verify the gpu side is working correctly.
-				for i := 0; i < 1000; i++ {
-					//fmt.Printf("L3: %d\n", p.L3)
+				// Check a subset of composite rejected K/Q values, to ensure they are not prime.
+				for i := 0; i < 500; i++ {
 					One := big.NewInt(1)
 					P := big.NewInt(int64(result.Exponent))
 					o := big.NewInt(int64(p.Test[i]))
@@ -306,7 +312,7 @@ func (result *Result) tfRun() {
 					Q.Lsh(Q, 1)
 					Q.Add(Q, One)
 					if Q.ProbablyPrime(10) {
-						fmt.Printf("---- %d %d %t\n", i, Q, Q.ProbablyPrime(10))
+						fmt.Printf("Error: ---- %d %d looks prime!\n", i, Q)
 					}
 				}
 			}
@@ -506,7 +512,7 @@ func main() {
 	flag.StringVar(&host, "host", host, "hostname")
 	flag.Parse()
 
-
+	fmt.Printf("# sizes: %d %d\n", C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
 	if 0 != C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version)) {
 		fmt.Fprintln(os.Stderr, "could not intialize vulkan")
 		return

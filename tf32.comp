@@ -23,12 +23,13 @@
 // Installing the 'vulkan-amdgpu' package will result in a significant (2.5x) performance increase.
 // also, maybe the difference isn't so much when not using uint64_t math.
 //
-#define M (4 * 3L * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
+#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
 #define M3 (47 * 53 * 59 * 61)                      //   8,965,109
 #define M4 (67 * 71 * 73 * 79)                      //  27,433,619
 #define M5 (83 * 89 * 97 * 101)                     //  72,370,439
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
+#define M7 (127 * 131 * 137 * 139)
 
 #define ListN 72990720
 //#define ListN 2043740170
@@ -47,6 +48,8 @@ layout(binding = 0) buffer buf
 	uint        NFound;
 	uint        Debug[2];   // output only used for debugging
 	uint        L2;
+	uint        L3;
+	uint        Test[1000];
 };
 
 struct uint96 {
@@ -66,11 +69,12 @@ layout(binding = 1) buffer buf2
 	uint       List2[ListN];
 	int        PreTop;
 	uint96     PreSq;
-	bool       X2[M2];
-	bool       X3[M3];
-	bool       X4[M4];
-	bool       X5[M5];
-	bool       X6[M6];
+	uint    X2[1+M2/32];
+	uint    X3[1+M3/32];
+	uint    X4[1+M4/32];
+	uint    X5[1+M5/32];
+	uint    X6[1+M6/32];
+	uint    X7[1+M7/32];
 };
 
 bool Zero(uint96 A) {
@@ -266,54 +270,6 @@ void Mul192(inout uint96 A, uint96 B, out uint192 R)
 	R.H.x[2] = uaddCarry(h[8], c, c1);
 }
 
-
-// 192-bit Floating point version
-void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
-	uint192 X, XX, Y;
-	uint96 D;
-
-	Mul192(A, A, X);
-	if (doshift) {
-		Lsh(X);
-	}
-
-	// it is faster to do this w/o testing, even if D might be zero and have no effect.
-	if (true) {
-		fto96(toF(X)*qinv, D);
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-
-		fto96(toF(X)*qinv, D);
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-	}
-	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
-
-	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
-	// Always guess D a little low, and refine our guess as we get closer.
-	// normally takes 2 passes.
-	//
-	//while (i < 5 && Cmp(X, Q) > 0) {
-	if (Cmp(X, Q) > 0) {
-		fto96(toF(X)*qinv, D);
-		if (Zero(D)) {
-			D.x[0] = 1;
-		}
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-		i++;
-	}
-	if (i > 1) {
-		atomicAdd(Debug[0], 1);
-	}
-	A = X.L;
-}
-
-void to96(uint64_t n, inout uint96 o) {
-	uint p0 = uint(n);      // lower 32-bits
-	uint p1 = uint(n>>32);  // upper 32-bits
-	o.x = uvec3(p0, p1, 0);
-}
 uint Mod(uint96 X, uint Q) {
 	if (X.x[2] == 0) {
 		uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
@@ -356,11 +312,60 @@ bool Mod0(uint96 X, uint Q) {
 		if (Zero(D)) {
 			D.x[0] = 1;
 		}
+
 		Mul192(D, QQ, Y);
 		Sub(X, Y.L);
 		i++;
 	}
 	return Zero(X) || X == QQ;
+}
+
+// 192-bit Floating point version
+void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
+	uint192 X, Y;
+	uint96 D;
+
+	Mul192(A, A, X);
+	if (doshift) {
+		Lsh(X);
+	}
+
+	// it is faster to do this w/o testing, even if D might be zero and have no effect.
+	if (true) {
+		fto96(toF(X)*qinv, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+
+		fto96(toF(X)*qinv, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+	}
+	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
+
+	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
+	// Always guess D a little low, and refine our guess as we get closer.
+	// normally takes 2 passes.
+	//
+	//while (i < 5 && Cmp(X, Q) > 0) {
+	while (Cmp(X, Q) > 0) {
+		fto96(toF(X)*qinv, D);
+		if (Zero(D)) {
+			D.x[0] = 1;
+		}
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+		i++;
+	}
+	if (i > 1) {
+		atomicAdd(Debug[0], 1);
+	}
+	A = X.L;
+}
+
+void to96(uint64_t n, inout uint96 o) {
+	uint p0 = uint(n);      // lower 32-bits
+	uint p1 = uint(n>>32);  // upper 32-bits
+	o.x = uvec3(p0, p1, 0);
 }
 
 bool tf(uint96 k) {
@@ -442,28 +447,72 @@ void main() {
 		uint kmodm4 = Mod(k, M4);
 		uint kmodm5 = Mod(k, M5);
 		uint kmodm6 = Mod(k, M6);
+		uint kmodm7 = Mod(k, M7);
 		if (I == 1) {
 			uint96 kt = k;
 			Inc(kt);  // incase of 0.
 			pretf(kt);
 		}
-
+		
 		while (true) {
 			uint i = atomicAdd(L, 1);
+
 			uint o = List[i];
 			if (i >= Ll) { return; }
 
-			if (!X2[(o + kmodm2)%M2] &&
-			    !X3[(o + kmodm3)%M3] &&
-			    !X4[(o + kmodm4)%M4] &&
-			    !X5[(o + kmodm5)%M5] &&
-			    !X6[(o + kmodm6)%M6])
+			uint i2 = (o + kmodm2)%M2;
+			bool c2 = 0 == (X2[i2/32] & (1u << (i2%32)));
+			uint i3 = (o + kmodm3)%M3;
+			bool c3 = 0 == (X3[i3/32] & (1u << (i3%32)));
+			uint i4 = (o + kmodm4)%M4;
+			bool c4 = 0 == (X4[i4/32] & (1u << (i4%32)));
+			uint i5 = (o + kmodm5)%M5;
+			bool c5 = 0 == (X5[i5/32] & (1u << (i5%32)));
+			uint i6 = (o + kmodm6)%M6;
+			bool c6 = 0 == (X6[i6/32] & (1u << (i6%32)));
+			uint i7 = (o + kmodm7)%M7;
+			bool c7 = 0 == (X7[i7/32] & (1u << (i7%32)));
+			if (c2 && c3 && c4 && c5 && c6 && c7)
 			{
-				uint ii = atomicAdd(L2, 1);
+			     	uint ii = atomicAdd(L2, 1);
 				List2[ii] = List[i];
+			} else if (false) {
+				// Give a sample of composites back to the CPU for primality testing.
+				// This is just for looking for bugs in the sieving process.
+			     	uint ii = atomicAdd(L3, 1);
+				if (ii < 1000) {
+					Test[ii] = List[i];
+				}
 			}
 		}
 		return;
+	}
+	if (Init == 3) {
+		while (true) {
+			uint i = atomicAdd(L, 1);
+			if (i > 1+M7/32) {
+				// All threads return here.
+				return;
+			}
+			if (i <= M2/32) {
+				X2[i] = 0;
+			}
+			if (i <= M3/32) {			     
+				X3[i] = 0;
+			}
+		       	if (i <= M4/32) {			     
+				X4[i] = 0;
+			}
+			if (i <= M5/32) {			     
+				X5[i] = 0;
+			}
+			if (i <= M6/32) {			     
+				X6[i] = 0;
+			}
+			if (i <= M7/32) {
+				X7[i] = 0;
+			}
+		}
 	}
 	if (Init == 1) {
 		while (true) {
@@ -490,19 +539,40 @@ void main() {
 				List[o] = i;
 			}
 			if (i < M2) {
-				X2[i] = (Mod0(Q,29)||Mod0(Q,31) || Mod0(Q,37)||Mod0(Q,41) || Mod0(Q,43));
+				bool c = (Mod0(Q,29)||Mod0(Q,31) || Mod0(Q,37)||Mod0(Q,41) || Mod0(Q,43));
+				if (c) {
+					atomicOr(X2[i/32], 1u << (i%32));
+				}
 			}
 			if (i < M3) {
-				X3[i] = (Mod0(Q,47)||Mod0(Q,53) || Mod0(Q,59)||Mod0(Q,61));
+				bool c = (Mod0(Q,47)||Mod0(Q,53) || Mod0(Q,59)||Mod0(Q,61));
+				if (c) {
+					atomicOr(X3[i/32], 1u << (i%32));
+				}
 			}
-			if (i < M4) {
-				X4[i] = (Mod0(Q,67)||Mod0(Q,71) || Mod0(Q,73)||Mod0(Q,79));
+		       	if (i < M4) {			     
+				bool c = (Mod0(Q,67)||Mod0(Q,71) || Mod0(Q,73)||Mod0(Q,79));
+				if (c) {
+					atomicOr(X4[i/32], 1u << (i%32));
+				}
 			}
-			if (i < M5) {
-				X5[i] = (Mod0(Q,83)||Mod0(Q,89) || Mod0(Q,97)||Mod0(Q,101));
+			if (i < M5) {			     
+				bool c = (Mod0(Q,83)||Mod0(Q,89) || Mod0(Q,97)||Mod0(Q,101));
+				if (c) {
+					atomicOr(X5[i/32], 1u << (i%32));
+				}
 			}
-			if (i < M6) {
-				X6[i] = (Mod0(Q,103)||Mod0(Q,107) || Mod0(Q,109)||Mod0(Q,113));
+			if (i < M6) {			     
+				bool c = (Mod0(Q,103)||Mod0(Q,107) || Mod0(Q,109)||Mod0(Q,113));
+				if (c) {
+					atomicOr(X6[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M7) {
+				bool c = (Mod0(Q,127)||Mod0(Q,131) || Mod0(Q,137)||Mod0(Q,139));
+				if (c) {
+					atomicOr(X7[i/32], 1u << (i%32));
+				}
 			}
 		}
 		// no threads reach here.
