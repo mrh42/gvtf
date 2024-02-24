@@ -7,8 +7,7 @@
 #include <sys/time.h>
 #include "tf.h"
 #include "spv32.h"
-#include "spv192.h"
-#include "spv256.h"
+#include "spv64.h"
 
 VkInstance instance;
 VkDebugReportCallbackEXT debugReportCallback;
@@ -37,7 +36,7 @@ uint32_t queueFamilyIndex;
 //
 // total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
 //
-const int np = 1024*1024*8;
+const int np = 1024*1024*2;
 
 int createInstance() {
         VkApplicationInfo applicationInfo = {};
@@ -184,8 +183,8 @@ void createBuffer() {
         VkMemoryAllocateInfo allocateInfo = {};
         allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocateInfo.allocationSize = memoryRequirements.size; // specify required memory.
-        allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-        //allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        //allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
         res = vkAllocateMemory(device, &allocateInfo, NULL, &bufferMemory);
 	if (res != VK_SUCCESS) {
@@ -569,12 +568,9 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	if (version == 32) {
 		codesize = sizeof(spv32);
 		code = spv32;
-	} else if (version == 192) {
-		codesize = sizeof(spv192);
-		code = spv192;
-	} else if (version == 256) {
-		codesize = sizeof(spv256);
-		code = spv256;
+	} else if (version == 64) {
+		codesize = sizeof(spv64);
+		code = spv64;
 	} else {
 		needfree = 1;
 		code = readFile(&codesize, "comp.spv");

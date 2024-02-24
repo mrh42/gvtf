@@ -23,14 +23,11 @@
 // it is somewhat slow, compared to DEVICE_LOCAL memory.
 struct Stuff {
 	uint64_t    P;            // 64 bit
-	uint32_t    Init;         // controls the code path in main(), 0 causes initialization of the Stuff2 tables.
-	uint32_t    L;            // start with 0, each thread will increment with AtomicAdd(L, 1)  
-	uint32_t    Ll;           // ListLen, when L >= Ll, threads will return.
+	uint32_t    Init;         // controls the code path in main()
 	uint64_t    K[2];         // 128-bit K
 	uint64_t    Found[10][2]; // up to 10 96-bit K values
 	uint32_t    NFound;
 	uint32_t    Debug[2];     // debugging passed back from the gpu
-	uint32_t    L2;
 	uint32_t    L3;
 	uint32_t    Test[1000];
 };

@@ -131,26 +131,25 @@ func initInput(P uint64) int {
 	
 	p.P = C.uint64_t(P)
 
+	p.Init = 13
+	C.runCommandBuffer()
 	p.Init = 3
 	C.runCommandBuffer()
 	//fmt.Printf("---- init3 done = %d\n", p.L)
 
-	p.Init = 1
-	p.L = 0
-	p.Ll = 0
 	p.Debug[0] = 0
-
+	p.Init = 11
 	C.runCommandBuffer()
+	p.Init = 1
+	C.runCommandBuffer()
+
 	p.Init = 5;
 	C.runCommandBuffer()
-	if p.Ll != C.ListLen {
-		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.L %d P.Ll %d != ListLen %d\n", p.L, p.Ll, C.ListLen)
+	if p.Debug[0] != C.ListLen {
+		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.Ll %d != ListLen %d\n", p.Debug[0], C.ListLen)
 		return -1;
 	}
 	//fmt.Printf("debug: %d %d\n", p.Debug[0], p.Debug[1])
-	p.L = 0
-	// from now on, init==0
-	p.Init = 0
 
 	C.mrhUnMap()
 	return 0;
@@ -218,21 +217,17 @@ func (result *Result) tfRun() {
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
 
+	// do second sieve.
+	startt := time.Now()
+	p.Init = 12
+	C.runCommandBuffer() // 12
 	p.Init = 2
-	p.L = 0
-	p.L2 = 0
-	p.L3 = 0
-	{
-		startt := time.Now()
-		C.runCommandBuffer()
-		p.Init = 5;  // copy L2 back
-		C.runCommandBuffer()
-		elapsed := time.Now().Sub(startt)
-		fmt.Printf("# L2: %d d: %d e: %s\n", p.L2, p.Debug[0], elapsed)
-	}
+	C.runCommandBuffer() //  2
+	p.Init = 5;  // copy L2 back, for sanity checking
+	C.runCommandBuffer()
+	elapsed := time.Now().Sub(startt)
+	fmt.Printf("# L2: %d d: %d e: %s\n", p.Debug[1], p.Debug[0], elapsed)
 
-	p.Init = 0
-	p.L = 0
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
 		p.Found[i][1] = 0
@@ -244,16 +239,16 @@ func (result *Result) tfRun() {
 	count := int64(0)
 	LastK := new(big.Int)
 	LastK.Set(K)
-	startt := time.Now()
+	startt = time.Now()
 	for {
 		p.NFound = 0
 		p.Debug[0] = 0
 		p.Debug[1] = 0
 
-		C.runCommandBuffer()
-		p.Init = 5;
-		C.runCommandBuffer()
+		p.Init = 10;
+		C.runCommandBuffer() // 10 - init atomics
 		p.Init = 0;
+		C.runCommandBuffer() // 0 - run TF
 
 		count++
 		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 30 {
@@ -269,7 +264,7 @@ func (result *Result) tfRun() {
 		}
 
 		if p.Debug[0] > 0 {
-			fmt.Fprintf(os.Stderr, "%d %d %d\n", count, p.Debug[0], p.L)
+			fmt.Fprintf(os.Stderr, "%d %d %d\n", count, p.Debug[0], p.Debug[1])
 		}
 		for i := 0; i < int(p.NFound); i++ {
 			f := big2(p.Found[i][0], p.Found[i][1])
@@ -291,45 +286,44 @@ func (result *Result) tfRun() {
 			break;
 		}
 		
-		if p.L >= p.L2 {
-			result.checkpoint(K)
+		result.checkpoint(K)
 
-			// advance to the next chunk to test.
-			K.Add(K, M)
-			p.K[0] = C.uint64_t(u64n(K, 0))
-			p.K[1] = C.uint64_t(u64n(K, 1))
+		// advance to the next chunk to test.
+		K.Add(K, M)
+		p.K[0] = C.uint64_t(u64n(K, 0))
+		p.K[1] = C.uint64_t(u64n(K, 1))
 
-			p.Init = 2;
-			p.L = 0;
-			p.L2 = 0;
-			p.L3 = 0;
-			C.runCommandBuffer()
-			//fmt.Printf("2: d: %d\n", p.Debug[0])
-			if (uint(p.L3) > 0) {
-				fmt.Printf("# verify-L3: %d\n", p.L3)
-				// Verify the gpu side is working correctly.
-				// Check a subset of composite rejected K/Q values, to ensure they are not prime.
-				for i := 0; i < 500; i++ {
-					One := big.NewInt(1)
-					P := big.NewInt(int64(result.Exponent))
-					o := big.NewInt(int64(p.Test[i]))
-					kk := new(big.Int).Add(K, o)
-					Q := new(big.Int).Mul(P, kk)
-					Q.Lsh(Q, 1)
-					Q.Add(Q, One)
-					if Q.ProbablyPrime(10) {
-						fmt.Printf("Error: ---- %d %d looks prime!\n", i, Q)
-					}
-				}
-			}
-			p.Init = 0;
-			p.L = 0
+		// re-run second sieve
+		p.Init = 12;  // init atomics
+		C.runCommandBuffer()
+		p.Init = 2;  // run sieve2
+		C.runCommandBuffer()
+		if (uint(p.L3) > 0) {
+			result.checkSieve(K, p)
 		}
 	}
 
 	C.mrhUnMap()
 	return
 }
+func (result *Result) checkSieve(K *big.Int, p *C.struct_Stuff) {
+	fmt.Printf("# verify-L3: %d\n", p.L3)
+	// Verify the gpu side is working correctly.
+	// Check a subset of composite rejected K/Q values, to ensure they are not prime.
+	for i := 0; i < 500; i++ {
+		One := big.NewInt(1)
+		P := big.NewInt(int64(result.Exponent))
+		o := big.NewInt(int64(p.Test[i]))
+		kk := new(big.Int).Add(K, o)
+		Q := new(big.Int).Mul(P, kk)
+		Q.Lsh(Q, 1)
+		Q.Add(Q, One)
+		if Q.ProbablyPrime(10) {
+			fmt.Printf("Error: ---- %d %d looks prime!\n", i, Q)
+		}
+	}
+}
+
 
 //func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
 func (out *Result) doLog() {

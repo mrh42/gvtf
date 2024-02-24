@@ -48,13 +48,10 @@ layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
 	uint        Init;       // If this is 1, then we setup our tables once.
-	uint        L;          // threads use atomicAdd(L, 1) to get next next list index
-	uint        Ll;         // Length of List
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        NFound;
 	uint        Debug[2];   // output only used for debugging
-	uint        L2;
 	uint        L3;
 	uint        Test[1000];
 };
@@ -530,7 +527,36 @@ bool tf(uint128 k) {
 	sq = PreSq;
 	for (int b = PreTop; b >= 0; b--) {
 		bool bb = (P & (one << b)) != 0;
-		SqModXX(sq, q, bb, qinv);
+		SqMod(sq, q, bb, qinv);
+	}
+	// If the result is 1, then we found a factor.
+	return sq.Lo == 1 && sq.Hi == 0;
+}
+bool tf9(uint128 k) {
+	uint128 sq, q;
+
+	int top = int(findMSB(P));
+
+	// q = 2 * p * k + 1
+	//pp.Lo = P;
+	//pp.Hi = 0;
+	Mul128(k, P, q);
+	Lsh(q);
+	Inc(q);
+
+        // Make our 1/q just a tiny bit too small, so we don't over estimate,
+        // but not so small as to need extra passes.
+	double qinv = 0.99999999999999 / toF(q);
+
+	// Do the TF math: Starting with 1, repeatedly square,
+	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
+	//  then compute mod Q.
+	uint64_t one = 1L;
+	sq.Lo = 1; sq.Hi = 0;
+	sq = PreSq;
+	for (int b = PreTop; b >= 0; b--) {
+		bool bb = (P & (one << b)) != 0;
+		SqMod9(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;
@@ -577,30 +603,36 @@ void main() {
 	// copy some counters back to shared memory
 	if (Init == 5) {
 		if (I == 0) {
-			L = xL;
-			Ll = xLl;
-			L2 = xL2;
+			Debug[0] = xLl;
+			Debug[1] = xL2;
 		}
 		return;
 	}
-	if (gl_GlobalInvocationID.x == 0) {
-		xL = 0;
-		if (Init == 2) {
-			xL2 = 0;
+	// initialize atomic counters for the next invocation.
+	if (Init >= 10) {
+		if (gl_GlobalInvocationID.x == 0) {
+			xL = 0;
+			L3 = 0;
+			if (Init == 12) {
+				xL2 = 0;
+			}
+			if (Init == 11) {
+				xLl = 0;
+			}
 		}
-		if (Init == 1) {
-		 	xLl = 0;
-		}
+		return;
 	}
-	barrier();  // wait for the zero-ing above.
+	// TF run
 	if (Init == 0) {
+		uint128 bk;
+		bk.Lo = K[0];
+		bk.Hi = K[1];
+		
 		while (true) {
 			//
 			// K is the base starting value for this invocation. 
 			//
-			uint128 k;
-			k.Lo = K[0];
-			k.Hi = K[1];
+			uint128 k = bk;
 
 			// get the next index from the List to test
 			uint i = atomicAdd(xL, 1);
@@ -619,8 +651,8 @@ void main() {
 			Add(k, oo);
 
 			if (Zero(k)) {return;}
-		
-			if (tf(k)) {
+
+			if (tf9(k)) {
 				// How many have we found?
 				uint f = atomicAdd(NFound, 1);
 				// return the 128-bit K
@@ -640,6 +672,7 @@ void main() {
 			uint128 kt = k;
 			Inc(kt);  // incase of 0.
 			pretf(kt);
+			return;
 		}
 		uint kmodm2 = Mod(k, M2);
 		uint kmodm3 = Mod(k, M3);
@@ -652,7 +685,7 @@ void main() {
 		while (true) {
 			uint i = atomicAdd(xL, 1);
 			uint o = List[i];
-			if (i >= Ll) { return; }
+			if (i >= xLl) { return; }
 
 			uint i2 = (o + kmodm2)%M2;
 			bool c2 = 0 == (X2[i2/32] & (1u << (i2%32)));
@@ -673,6 +706,7 @@ void main() {
 				uint ii = atomicAdd(xL2, 1);
 				List2[ii] = List[i];
 			} else if (false) {
+				// Just for debugging, normally not used.
 				// Give a sample of composites back to the CPU for primality testing.
 				// This is just for looking for bugs in the sieving process.
 			     	uint ii = atomicAdd(L3, 1);
@@ -681,7 +715,8 @@ void main() {
 				}
 			}
 		}
-		return;
+		// no threads reach here
+		//return;
 	}
 	// initialize our bit arrays to zero
 	if (Init == 3) {
@@ -736,6 +771,8 @@ void main() {
 				uint o = atomicAdd(xLl, 1);
 				List[o] = i;
 			}
+			// the mess below is apparently difficult to schedule, but we don't really care,
+			// this is only called once per exponent
 			if (i < M2) {
 				bool c = (Mod0(Q,29) || Mod0(Q,31) || Mod0(Q,37)|| Mod0(Q,41) || Mod0(Q,43));
 				if (c) {
