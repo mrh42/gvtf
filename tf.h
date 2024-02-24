@@ -41,6 +41,7 @@ struct Stuff {
 // to allocate enough memory on the GPU for what the shader needs.
 //
 struct Stuff2 {
+	uint32_t    xL, xL2, xLl;
 	uint32_t    List[ListLen];
 	uint32_t    List2[ListLen];
 	uint32_t    PreTop;

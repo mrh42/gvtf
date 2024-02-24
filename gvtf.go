@@ -132,7 +132,6 @@ func initInput(P uint64) int {
 	p.P = C.uint64_t(P)
 
 	p.Init = 3
-	p.L = 0
 	C.runCommandBuffer()
 	//fmt.Printf("---- init3 done = %d\n", p.L)
 
@@ -141,7 +140,8 @@ func initInput(P uint64) int {
 	p.Ll = 0
 	p.Debug[0] = 0
 
-	// Run the shader with init==0
+	C.runCommandBuffer()
+	p.Init = 5;
 	C.runCommandBuffer()
 	if p.Ll != C.ListLen {
 		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.L %d P.Ll %d != ListLen %d\n", p.L, p.Ll, C.ListLen)
@@ -218,17 +218,20 @@ func (result *Result) tfRun() {
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
 
-	p.Init = 2;
-	p.L = 0;
-	p.L2 = 0;
-	p.L3 = 0;
+	p.Init = 2
+	p.L = 0
+	p.L2 = 0
+	p.L3 = 0
 	{
 		startt := time.Now()
+		C.runCommandBuffer()
+		p.Init = 5;  // copy L2 back
 		C.runCommandBuffer()
 		elapsed := time.Now().Sub(startt)
 		fmt.Printf("# L2: %d d: %d e: %s\n", p.L2, p.Debug[0], elapsed)
 	}
-	p.Init = 0;
+
+	p.Init = 0
 	p.L = 0
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
@@ -248,6 +251,9 @@ func (result *Result) tfRun() {
 		p.Debug[1] = 0
 
 		C.runCommandBuffer()
+		p.Init = 5;
+		C.runCommandBuffer()
+		p.Init = 0;
 
 		count++
 		if elapsed := time.Now().Sub(startt);  elapsed.Seconds() > 30 {
@@ -285,7 +291,7 @@ func (result *Result) tfRun() {
 			break;
 		}
 		
-		if p.L >= p.Ll {
+		if p.L >= p.L2 {
 			result.checkpoint(K)
 
 			// advance to the next chunk to test.
@@ -430,10 +436,10 @@ func writework(work []*Work, filename string) error {
 
 func (result *Result) runOne(docheckpoint bool) {
 	startt := time.Now()
-	if initInput(result.Exponent) == 0 {
-		elapsed := time.Now().Sub(startt)
-		fmt.Printf("# initInput(%d) took %s\n", result.Exponent, elapsed)
-
+	ii := initInput(result.Exponent)
+	elapsed := time.Now().Sub(startt)
+	fmt.Printf("# initInput(%d) took %s\n", result.Exponent, elapsed)
+	if ii == 0 {
 		result.krestart = new(big.Int)
 		filename := fmt.Sprintf("%d.ckp", result.Exponent)
 		done := make(chan struct{})
@@ -498,7 +504,7 @@ func main() {
 	u, _ := user.Current()
 	host, _ := os.Hostname()
 
-	// 726064763, 4112322971, 4113809639, 6000003419, 6000003437, 6000003167, 6000001031, 6000003743
+	// 31202533, 726064763, 4112322971, 4113809639, 6000003419, 6000003437, 6000003167, 6000001031, 6000003743
 	flag.Uint64Var(&P, "exponent", 4112322971, "The exponent to test")
 	flag.StringVar(&workfile, "worktodo", "", "worktodo filename")
 	flag.BoolVar(&docheckpoint, "checkpoint", false, "do checkpoints while running")

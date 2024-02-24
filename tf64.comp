@@ -67,6 +67,7 @@ struct uint128 {
 // This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
 layout(binding = 1) buffer buf2
 {
+	uint    xL, xL2, xLl;
 	uint       List[ListN];
 	uint       List2[ListN];
 	int        PreTop;
@@ -462,7 +463,7 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	A = X.L;
 }
 
-uint Mod(uint128 X, uint64_t Q) {
+uint Mod(uint128 X, uint Q) {
 	if (X.Hi == 0) {
 		return uint(X.Lo % Q);
 	}
@@ -572,13 +573,70 @@ void pretf(uint128 k) {
 }
 
 void main() {
-	//uint I = gl_GlobalInvocationID.x;
+	uint I = gl_GlobalInvocationID.x;
+	// copy some counters back to shared memory
+	if (Init == 5) {
+		if (I == 0) {
+			L = xL;
+			Ll = xLl;
+			L2 = xL2;
+		}
+		return;
+	}
+	if (gl_GlobalInvocationID.x == 0) {
+		xL = 0;
+		if (Init == 2) {
+			xL2 = 0;
+		}
+		if (Init == 1) {
+		 	xLl = 0;
+		}
+	}
+	barrier();  // wait for the zero-ing above.
+	if (Init == 0) {
+		while (true) {
+			//
+			// K is the base starting value for this invocation. 
+			//
+			uint128 k;
+			k.Lo = K[0];
+			k.Hi = K[1];
+
+			// get the next index from the List to test
+			uint i = atomicAdd(xL, 1);
+			if (i >= xL2) {
+				// All threads return here.
+				return;
+			}
+			uint o = List2[i];
+			uint128 oo;
+
+			// offset from the base K
+			oo.Lo = o;
+			oo.Hi = 0;
+
+			// the actual K this thread will test.
+			Add(k, oo);
+
+			if (Zero(k)) {return;}
+		
+			if (tf(k)) {
+				// How many have we found?
+				uint f = atomicAdd(NFound, 1);
+				// return the 128-bit K
+				Found[f][0] = k.Lo;
+				Found[f][1] = k.Hi;
+			}
+		}
+		// no threads reach here.
+	}
+
+ 	// perform the second sieve, populating list2
 	if (Init == 2) {
-		uint I = gl_GlobalInvocationID.x;
 		uint128 k;
 		k.Lo = K[0];
 		k.Hi = K[1];
-		if (I == 1) {
+		if (I == 0) {
 			uint128 kt = k;
 			Inc(kt);  // incase of 0.
 			pretf(kt);
@@ -592,7 +650,7 @@ void main() {
 		uint kmodm8 = Mod(k, M8);
 
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint i = atomicAdd(xL, 1);
 			uint o = List[i];
 			if (i >= Ll) { return; }
 
@@ -612,7 +670,7 @@ void main() {
 			bool c8 = 0 == (X8[i8/32] & (1u << (i8%32)));
 			if (c2 && c3 && c4 && c5 && c6 && c7 && c8)
 			{
-				uint ii = atomicAdd(L2, 1);
+				uint ii = atomicAdd(xL2, 1);
 				List2[ii] = List[i];
 			} else if (false) {
 				// Give a sample of composites back to the CPU for primality testing.
@@ -625,9 +683,10 @@ void main() {
 		}
 		return;
 	}
+	// initialize our bit arrays to zero
 	if (Init == 3) {
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint i = atomicAdd(xL, 1);
 			if (i > 1+M7/32) {
 				// All threads return here.
 				return;
@@ -655,9 +714,10 @@ void main() {
 			}
 		}
 	}
+	// perform the first sieve
 	if (Init == 1) {
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint i = atomicAdd(xL, 1);
 			if (i >= M) {
 				// All threads return here.
 				return;
@@ -673,7 +733,7 @@ void main() {
 				Mod0(Q,17) || Mod0(Q,19) || Mod0(Q,23);
 
 			if (!y) {
-				uint o = atomicAdd(Ll, 1);
+				uint o = atomicAdd(xLl, 1);
 				List[o] = i;
 			}
 			if (i < M2) {
@@ -720,39 +780,5 @@ void main() {
 			}
 		}
 		// no threads reach here.
-	}
-	//
-	// K is the base starting value for this invocation. 
-	//
-	uint128 k;
-	k.Lo = K[0];
-	k.Hi = K[1];
-
-	// get the next index from the List to test
-	uint i = atomicAdd(L, 1);
-	if (i >= L2) {
-		return;
-	}
-	uint o = List2[i];
-	uint128 oo;
-
-	// offset from the base K
-	oo.Lo = o;
-	oo.Hi = 0;
-
-	// the actual K this thread will test.
-	Add(k, oo);
-
-	// check if something went terribly wrong above.
-	// We didn't find a K to test at all?
-	if (Zero(k)) {return;}
-	//return;
-		
-	if (tf(k)) {
-		// How many have we found?
-		uint f = atomicAdd(NFound, 1);
-		// return the 128-bit K
-		Found[f][0] = k.Lo;
-		Found[f][1] = k.Hi;
 	}
 }

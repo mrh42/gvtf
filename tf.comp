@@ -67,10 +67,9 @@ struct uint192 {
 // This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
 layout(binding = 1) buffer buf2
 {
+	uint    xL, xL2, xLl;
 	uint       List[ListN];
 	uint       List2[ListN];
-	int        PreTop;
-	uint96     PreSq;
 	uint    X2[1+M2/32];
 	uint    X3[1+M3/32];
 	uint    X4[1+M4/32];
@@ -78,6 +77,8 @@ layout(binding = 1) buffer buf2
 	uint    X6[1+M6/32];
 	uint    X7[1+M7/32];
 	uint    X8[1+M8/32];
+	int        PreTop;
+	uint96     PreSq;
 };
 
 bool Zero(uint96 A) {
@@ -278,7 +279,7 @@ uint Mod(uint96 X, uint Q) {
 		uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
 		return uint(x64 % Q);
 	}
-	atomicAdd(Debug[0], 1);
+	//atomicAdd(Debug[0], 1);
 	uint96 D, QQ;
 	uint192 Y;
 	int i = 0;
@@ -360,7 +361,7 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 		i++;
 	}
 	if (i > 1) {
-		atomicAdd(Debug[0], 1);
+		//atomicAdd(Debug[0], 1);
 	}
 	A = X.L;
 }
@@ -375,7 +376,7 @@ bool tf(uint96 k) {
 	uint96 sq, q, pp;
 	uint192 t;
 
-	int top = int(findMSB(P));
+	//int top = int(findMSB(P));
 	// q = 2 * p * k + 1
 	to96(P, pp);
 	Mul192(k, pp, t);
@@ -390,12 +391,12 @@ bool tf(uint96 k) {
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
 	//  then compute mod Q.
-	uint64_t one = 1L;
+	uint64_t one = 1L << PreTop;
 	sq.x = uvec3(1, 0, 0);
 	sq = PreSq; // Start from the pre-computed point
 	for (int b = PreTop; b >= 0; b--) {
-		bool bb;
-		bb = (P & (one << b)) != 0;
+		bool bb = (P & (one)) != 0;
+		one >>= 1;
 		SqMod(sq, q, bb, qinv);
 	}
 	// If the result is 1, then we found a factor.
@@ -442,29 +443,82 @@ void pretf(uint96 k) {
 
 void main() {
 	//uint I = gl_GlobalInvocationID.x;
+	//
+	// K is the base starting value for this invocation. 
+	//
+	uint96 kbase;
+	kbase.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
+
+	if (Init == 5) {
+		uint I = gl_GlobalInvocationID.x;
+		if (I == 0) {
+			L = xL;
+			Ll = xLl;
+			L2 = xL2;
+		}
+		return;
+	}
+	if (gl_GlobalInvocationID.x == 0) {
+		xL = 0;
+		if (Init == 2) {
+			xL2 = 0;
+		}
+		if (Init == 1) {
+		 	xLl = 0;
+		}
+	}
+	barrier();
+ 
+	if (Init == 0) {
+		while (true) {
+			// get the next index from the List to test
+			uint i = atomicAdd(xL, 1);
+			if (i >= xL2) {
+				return;
+			}
+			uint96 k = kbase;
+			uint o = List2[i];
+
+			// XXX: code is faster with this line, even if the condition is never true, weird
+			// something magic about the possibility of a continue.
+			// doesn't really matter what the condition is.
+			if (o == 0 && Zero(k)) {continue;}
+
+			// the actual K this thread will test.
+			Add(k, o);
+
+			if (tf(k)) {
+				// How many have we found?
+				uint f = atomicAdd(NFound, 1);
+				// return the 96-bit K
+				Found[f][0] = k.x[0] | uint64_t(k.x[1]) << 32;
+				Found[f][1] = k.x[2];
+			}
+		}
+	}
+
 	if (Init == 2) {
 		uint I = gl_GlobalInvocationID.x;
-		uint96 k;
-		k.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
-		if (I == 1) {
-			uint96 kt = k;
+		if (I == 0) {
+			uint96 kt = kbase;
 			Inc(kt);  // incase of 0.
 			pretf(kt);
-			return;
+			//return;
 		}
-		uint kmodm2 = Mod(k, M2);
-		uint kmodm3 = Mod(k, M3);
-		uint kmodm4 = Mod(k, M4);
-		uint kmodm5 = Mod(k, M5);
-		uint kmodm6 = Mod(k, M6);
-		uint kmodm7 = Mod(k, M7);
-		uint kmodm8 = Mod(k, M8);
+		uint kmodm2 = Mod(kbase, M2);
+		uint kmodm3 = Mod(kbase, M3);
+		uint kmodm4 = Mod(kbase, M4);
+		uint kmodm5 = Mod(kbase, M5);
+		uint kmodm6 = Mod(kbase, M6);
+		uint kmodm7 = Mod(kbase, M7);
+		uint kmodm8 = Mod(kbase, M8);
 
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint i = atomicAdd(xL, 1);
 
 			uint o = List[i];
 			if (i >= Ll) { return; }
+			if (i > M) {continue;} // non-sense code, helps optimizer
 
 			uint i2 = (o + kmodm2)%M2;
 			bool c2 = 0 == (X2[i2/32] & (1u << (i2%32)));
@@ -482,7 +536,7 @@ void main() {
 			bool c8 = 0 == (X8[i8/32] & (1u << (i8%32)));
 			if (c2 && c3 && c4 && c5 && c6 && c7 && c8)
 			{
-			     	uint ii = atomicAdd(L2, 1);
+			     	uint ii = atomicAdd(xL2, 1);
 				List2[ii] = List[i];
 			} else if (false) {
 				// Give a sample of composites back to the CPU for primality testing.
@@ -497,7 +551,7 @@ void main() {
 	}
 	if (Init == 3) {
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint i = atomicAdd(xL, 1);
 			if (i > 1+M7/32) {
 				// All threads return here.
 				return;
@@ -505,7 +559,7 @@ void main() {
 			if (i <= M2/32) {
 				X2[i] = 0;
 			}
-			if (i <= M3/32) {			     
+			if (i <= M3/32) {
 				X3[i] = 0;
 			}
 		       	if (i <= M4/32) {			     
@@ -527,7 +581,7 @@ void main() {
 	}
 	if (Init == 1) {
 		while (true) {
-			uint i = atomicAdd(L, 1);
+			uint i = atomicAdd(xL, 1);
 			if (i >= M) {
 				// All threads return here.
 				return;
@@ -546,7 +600,7 @@ void main() {
 				Mod0(Q,5) || Mod0(Q,7) || Mod0(Q,11) || Mod0(Q,13) ||
 				Mod0(Q,17) || Mod0(Q,19) || Mod0(Q,23);
 			if (!y) {
-				uint o = atomicAdd(Ll, 1);
+				uint o = atomicAdd(xLl, 1);
 				List[o] = i;
 			}
 			if (i < M2) {
@@ -593,41 +647,7 @@ void main() {
 			}
 		}
 		// no threads reach here.
-	}
-	//
-	// K is the base starting value for this invocation. 
-	//
-	uint96 k;
-	k.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
-
-	if (true) {
-		// get the next index from the List to test
-		uint i = atomicAdd(L, 1);
-		if (i >= L2) {
-			return;
-		}
-		uint o = List2[i];
-		uint96 oo;
-
-
-		// offset from the base K
-		oo.x = uvec3(o, 0, 0);
-
-		// the actual K this thread will test.
-		Add(k, oo);
-
-		// check if something went terribly wrong above.
-		// We didn't find a K to test at all?
-		if (Zero(k)) {return;}
-		//return;
-		
-		if (tf(k)) {
-			// How many have we found?
-			uint f = atomicAdd(NFound, 1);
-			// return the 96-bit K
-			Found[f][0] = k.x[0] | uint64_t(k.x[1]) << 32;
-			Found[f][1] = k.x[2];
-		}
 		return;
 	}
+
 }

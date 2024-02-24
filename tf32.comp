@@ -598,7 +598,7 @@ void main() {
 	uint96 k;
 	k.x = uvec3(uint(K[0]& 0xffffffff), uint((K[0]>>32)& 0xffffffff), uint(K[1]&0xffffffff));
 
-	if (true) {
+	if (Init == 0) {
 		// get the next index from the List to test
 		uint i = atomicAdd(L, 1);
 		if (i >= L2) {
