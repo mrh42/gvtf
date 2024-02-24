@@ -27,7 +27,7 @@ struct Stuff {
 	uint64_t    K[2];         // 128-bit K
 	uint64_t    Found[10][2]; // up to 10 96-bit K values
 	uint32_t    NFound;
-	uint32_t    Debug[2];     // debugging passed back from the gpu
+	uint32_t    Debug[4];     // debugging passed back from the gpu
 	uint32_t    L3;
 	uint32_t    Test[1000];
 };

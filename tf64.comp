@@ -51,7 +51,7 @@ layout(binding = 0) buffer buf
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        NFound;
-	uint        Debug[2];   // output only used for debugging
+	uint        Debug[4];   // output only used for debugging
 	uint        L3;
 	uint        Test[1000];
 };
@@ -224,7 +224,7 @@ void Add(inout uint128 A, uint128 B) {
 bool Zero(uint128 A) {
 	return A.Lo == 0 && A.Hi == 0;
 }
-void multiply64to128(uint64_t x, uint64_t y, out uint128 r)
+void multiply64to128x(uint64_t x, uint64_t y, out uint128 r)
 {
 	uint64_t lowbits = 0xfffffffful;
 	u64vec4 x4 = u64vec4(x >> 32, x & lowbits, x >> 32, x & lowbits);
@@ -251,7 +251,7 @@ void multiply64to128(uint64_t x, uint64_t y, out uint128 r)
 	*/
 }
 
-void multiply64to128x(uint64_t lhs, uint64_t rhs, inout uint128 r) {
+void multiply64to128(uint64_t lhs, uint64_t rhs, inout uint128 r) {
 
         // First calculate all of the cross products.
 	uint64_t lo_lo = (lhs & 0xFFFFFFFFul) * (rhs & 0xFFFFFFFFul);
@@ -383,6 +383,8 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		Lsh(X);
 	}
 
+	//if (X.H.Hi > 0) {atomicAdd(Debug[0], 1);}
+
 	// it is faster to do this w/o testing, even if D might be zero and have no effect.
 	if (true) {
 		double x = toF(X);
@@ -401,7 +403,7 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	// Always guess D a little low, and refine our guess as we get closer.
 	// normally takes 2 passes.
 	//while (i < 10 && Cmp(X, Q) > 0) {
-	if (Cmp(X, Q) > 0) {
+	while (Cmp(X, Q) > 0) {
 
 		double x = toF(X);
 		fto128(x*qinv, D);
@@ -446,7 +448,7 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	// normally takes 2 passes.
 	//
 	//while (i < 10 && Cmp(X, Q) > 0) {
-	if (Cmp(X, Q) > 0) {
+	while (Cmp(X, Q) > 0) {
 		double x = toF(X);
 		fto128(x*qinv, D);
 		if (Zero(D)) {
@@ -624,15 +626,13 @@ void main() {
 	}
 	// TF run
 	if (Init == 0) {
-		uint128 bk;
-		bk.Lo = K[0];
-		bk.Hi = K[1];
-		
 		while (true) {
 			//
 			// K is the base starting value for this invocation. 
 			//
-			uint128 k = bk;
+			uint128 k;
+			k.Lo = K[0];
+			k.Hi = K[1];
 
 			// get the next index from the List to test
 			uint i = atomicAdd(xL, 1);
@@ -652,10 +652,10 @@ void main() {
 
 			if (Zero(k)) {return;}
 
-			if (tf9(k)) {
+			if (tf(k)) {
 				// How many have we found?
 				uint f = atomicAdd(NFound, 1);
-				// return the 128-bit K
+				// return the 128-bit K values
 				Found[f][0] = k.Lo;
 				Found[f][1] = k.Hi;
 			}

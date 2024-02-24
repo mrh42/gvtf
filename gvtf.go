@@ -226,7 +226,7 @@ func (result *Result) tfRun() {
 	p.Init = 5;  // copy L2 back, for sanity checking
 	C.runCommandBuffer()
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# L2: %d d: %d e: %s\n", p.Debug[1], p.Debug[0], elapsed)
+	fmt.Printf("# L2: %d d: %d over: %d, e: %s\n", p.Debug[1], p.Debug[0], p.Debug[3], elapsed)
 
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
@@ -264,7 +264,7 @@ func (result *Result) tfRun() {
 		}
 
 		if p.Debug[0] > 0 {
-			fmt.Fprintf(os.Stderr, "%d %d %d\n", count, p.Debug[0], p.Debug[1])
+			fmt.Fprintf(os.Stderr, "# Debug %d %d %d\n", count, p.Debug[0], p.Debug[1])
 		}
 		for i := 0; i < int(p.NFound); i++ {
 			f := big2(p.Found[i][0], p.Found[i][1])
@@ -506,7 +506,7 @@ func main() {
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Uint("bithi", 68, "bit limit to test to")
 	B1 := flag.Uint("bitlo", 0, "bit limit to test from")
-	version := flag.Int("version", 32, "version of GPU code to use, 32, 192(64-bit), or 256(64-bit)")
+	version := flag.Int("version", 64, "version of GPU code to use, 32 or 64")
 
 	flag.StringVar(&username, "username", u.Username, "username")
 	flag.StringVar(&host, "host", host, "hostname")
