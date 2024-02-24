@@ -226,7 +226,7 @@ func (result *Result) tfRun() {
 	p.Init = 5;  // copy L2 back, for sanity checking
 	C.runCommandBuffer()
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# L2: %d d: %d over: %d, e: %s\n", p.Debug[1], p.Debug[0], p.Debug[3], elapsed)
+	fmt.Printf("# L2: %d d: %d, e: %s\n", p.Debug[1], p.Debug[0], elapsed)
 
 	for i := 0; i < 10; i++ {
 		p.Found[i][0] = 0
@@ -241,6 +241,12 @@ func (result *Result) tfRun() {
 	LastK.Set(K)
 	startt = time.Now()
 	for {
+		p.Big = 0;
+		bits := ktobit(result.Exponent, K)
+		if (bits >= 95) {
+			// let the GPU code know to switch to 96-bit+ code
+			p.Big = 1;
+		}
 		p.NFound = 0
 		p.Debug[0] = 0
 		p.Debug[1] = 0
@@ -263,8 +269,8 @@ func (result *Result) tfRun() {
 			LastK.Set(K)
 		}
 
-		if p.Debug[0] > 0 {
-			fmt.Fprintf(os.Stderr, "# Debug %d %d %d\n", count, p.Debug[0], p.Debug[1])
+		if p.Debug[3] > 0 {
+			fmt.Fprintf(os.Stderr, "# Overflow in GPU code detected %d\n", count)
 		}
 		for i := 0; i < int(p.NFound); i++ {
 			f := big2(p.Found[i][0], p.Found[i][1])

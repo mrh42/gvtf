@@ -47,7 +47,8 @@ layout (local_size_x = 64) in;
 layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
-	uint        Init;       // If this is 1, then we setup our tables once.
+	uint        Init;       // controls the code path in main()
+	uint        Big;        // Need > 96-bit math
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        NFound;
@@ -626,7 +627,41 @@ void main() {
 	}
 	// TF run
 	if (Init == 0) {
-		while (true) {
+		while (Big == 0) {
+			//
+			// K is the base starting value for this invocation. 
+			//
+			uint128 k;
+			k.Lo = K[0];
+			k.Hi = K[1];
+
+			// get the next index from the List to test
+			uint i = atomicAdd(xL, 1);
+			if (i >= xL2) {
+				// All threads return here.
+				return;
+			}
+			uint o = List2[i];
+			uint128 oo;
+
+			// offset from the base K
+			oo.Lo = o;
+			oo.Hi = 0;
+
+			// the actual K this thread will test.
+			Add(k, oo);
+
+			if (Zero(k)) {return;}
+
+			if (tf9(k)) {
+				// How many have we found?
+				uint f = atomicAdd(NFound, 1);
+				// return the 128-bit K values
+				Found[f][0] = k.Lo;
+				Found[f][1] = k.Hi;
+			}
+		}
+		while (Big == 1) {
 			//
 			// K is the base starting value for this invocation. 
 			//

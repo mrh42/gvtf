@@ -43,6 +43,7 @@ layout(binding = 0) buffer buf
 {	
 	uint64_t    P;          // input from CPU side
 	uint        Init;       // If this is 1, then we setup our tables once.
+	uint        Big;        // Need > 96-bit math
 	uint64_t    K[2];       // base K input from CPU side
 	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
 	uint        NFound;
@@ -472,6 +473,11 @@ void main() {
 
 	// TF run
 	if (Init == 0) {
+		if (Big > 0) {
+			// this version can't handle >96bit
+			Debug[3] = 1;
+			return;
+		}
 		while (true) {
 			// get the next index from the List to test
 			uint i = atomicAdd(xL, 1);

@@ -24,6 +24,7 @@
 struct Stuff {
 	uint64_t    P;            // 64 bit
 	uint32_t    Init;         // controls the code path in main()
+	uint32_t    Big;          // Need > 96-bit math
 	uint64_t    K[2];         // 128-bit K
 	uint64_t    Found[10][2]; // up to 10 96-bit K values
 	uint32_t    NFound;
