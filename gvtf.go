@@ -131,20 +131,20 @@ func initInput(P uint64) int {
 	
 	p.P = C.uint64_t(P)
 
-	p.Init = 13
+	p.Init = 13  // init atomics
 	C.runCommandBuffer()
-	p.Init = 3
+	p.Init = 3  // init bit arrays
 	C.runCommandBuffer()
 	//fmt.Printf("---- init3 done = %d\n", p.L)
 
-	p.Debug[0] = 0
-	p.Init = 11
+	p.Init = 11  // init atomics
 	C.runCommandBuffer()
-	p.Init = 1
+	p.Init = 1   // first sieve
 	C.runCommandBuffer()
 
-	p.Init = 5;
+	p.Init = 5;  // copy back atomic counters, to check it went correctly
 	C.runCommandBuffer()
+
 	if p.Debug[0] != C.ListLen {
 		fmt.Fprintf(os.Stdout, "# Something went wrong during init on the GPU: P.Ll %d != ListLen %d\n", p.Debug[0], C.ListLen)
 		return -1;
@@ -219,19 +219,15 @@ func (result *Result) tfRun() {
 
 	// do second sieve.
 	startt := time.Now()
-	p.Init = 12
-	C.runCommandBuffer() // 12
-	p.Init = 2
-	C.runCommandBuffer() //  2
+	p.Init = 12    // init atomic counters
+	C.runCommandBuffer()
+	p.Init = 2     // second seive
+	C.runCommandBuffer()
 	p.Init = 5;  // copy L2 back, for sanity checking
 	C.runCommandBuffer()
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# L2: %d d: %d, e: %s\n", p.Debug[1], p.Debug[0], elapsed)
+	fmt.Printf("# L2: %d Ll: %d, e: %s\n", p.Debug[1], p.Debug[0], elapsed)
 
-	for i := 0; i < 10; i++ {
-		p.Found[i][0] = 0
-		p.Found[i][1] = 0
-	}
 	if result.kfactors == nil {
 		result.kfactors = make([]*big.Int, 0, 10)
 	}
@@ -244,12 +240,9 @@ func (result *Result) tfRun() {
 		p.Big = 0;
 		bits := ktobit(result.Exponent, K)
 		if (bits >= 95) {
-			// let the GPU code know to switch to 96-bit+ code
+			// let the GPU code know to switch from 96 to 128-bit code
 			p.Big = 1;
 		}
-		p.NFound = 0
-		p.Debug[0] = 0
-		p.Debug[1] = 0
 
 		p.Init = 10;
 		C.runCommandBuffer() // 10 - init atomics

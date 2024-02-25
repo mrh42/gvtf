@@ -564,6 +564,10 @@ bool tf9(uint128 k) {
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;
 }
+
+//
+// The squaring rounds are all the same, until Sq>Q.  So we can pre-compute those.
+//
 void pretf(uint128 k) {
 	uint128 sq, q;
 
@@ -613,9 +617,14 @@ void main() {
 	}
 	// initialize atomic counters for the next invocation.
 	if (Init >= 10) {
-		if (gl_GlobalInvocationID.x == 0) {
+		if (I == 0) {
+			Debug[0] = 0;
+			Debug[1] = 0;
+			Debug[2] = 0;
+			Debug[3] = 0;
 			xL = 0;
 			L3 = 0;
+			NFound = 0;
 			if (Init == 12) {
 				xL2 = 0;
 			}
@@ -653,6 +662,7 @@ void main() {
 
 			if (Zero(k)) {return;}
 
+			// 96/192-bit math
 			if (tf9(k)) {
 				// How many have we found?
 				uint f = atomicAdd(NFound, 1);
@@ -687,6 +697,7 @@ void main() {
 
 			if (Zero(k)) {return;}
 
+			// 128/256 bit math
 			if (tf(k)) {
 				// How many have we found?
 				uint f = atomicAdd(NFound, 1);

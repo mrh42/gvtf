@@ -34,9 +34,10 @@ uint32_t queueFamilyIndex;
 // A lot of code in this file was inspired by:
 //    https://github.com/Erkaman/vulkan_minimal_compute
 //
-// total threads to start.  choosen so each call to the gpu is around 50 to 100ms.
+// total threads to start.
 //
-const int np = 1024*1024*2;
+//const int np = 1024*1024*8;
+const int np = 1024*128;
 
 int createInstance() {
         VkApplicationInfo applicationInfo = {};

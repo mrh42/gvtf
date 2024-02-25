@@ -459,8 +459,13 @@ void main() {
 	// initialize atomic counters for the next invocation.
 	if (Init >= 10) {
 		if (gl_GlobalInvocationID.x == 0) {
+			Debug[0] = 0;
+			Debug[1] = 0;
+			Debug[2] = 0;
+			Debug[3] = 0;
 			xL = 0;
 			L3 = 0;
+			NFound = 0;
 			if (Init == 12) {
 				xL2 = 0;
 			}
