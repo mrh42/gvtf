@@ -37,7 +37,8 @@ uint32_t queueFamilyIndex;
 // total threads to start.
 //
 //const int np = 1024*1024*8;
-const int np = 1024*128;
+const int NP = 1024*512;
+const int XSIZE = 64;
 
 int createInstance() {
         VkApplicationInfo applicationInfo = {};
@@ -480,7 +481,7 @@ void createCommandBuffer() {
         If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
         */
 	// mrh: match shader...
-        vkCmdDispatch(commandBuffer, np/64, 1, 1);
+        vkCmdDispatch(commandBuffer, NP/XSIZE, 1, 1);
 
         res = vkEndCommandBuffer(commandBuffer); // end recording commands.
 	if (res != VK_SUCCESS) {

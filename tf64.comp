@@ -37,9 +37,11 @@
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
 #define M7 (127 * 131 * 137 * 139)                  // 316,818,391
 #define M8 (149 * 151 * 157)                        //   3,532,343
+#define M9 (163 * 167 * 173)                        //   4,709,233
+#define M0 (179 * 181 * 191)                        //   6,188,209
+#define M1 (193 * 197 * 199)                        //   7,566,179
 
 #define ListN 72990720
-//#define ListN 2043740170
 layout (local_size_x = 64) in;
 
 // This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
@@ -77,6 +79,9 @@ layout(binding = 1) buffer buf2
 	uint    X6[1+M6/32];
 	uint    X7[1+M7/32];
 	uint    X8[1+M8/32];
+	uint    X9[1+M9/32];
+	uint    X0[1+M0/32];
+	uint    X1[1+M1/32];
 };
 
 
@@ -225,7 +230,7 @@ void Add(inout uint128 A, uint128 B) {
 bool Zero(uint128 A) {
 	return A.Lo == 0 && A.Hi == 0;
 }
-void multiply64to128x(uint64_t x, uint64_t y, out uint128 r)
+void multiply64to128(uint64_t x, uint64_t y, out uint128 r)
 {
 	uint64_t lowbits = 0xfffffffful;
 	u64vec4 x4 = u64vec4(x >> 32, x & lowbits, x >> 32, x & lowbits);
@@ -252,7 +257,7 @@ void multiply64to128x(uint64_t x, uint64_t y, out uint128 r)
 	*/
 }
 
-void multiply64to128(uint64_t lhs, uint64_t rhs, inout uint128 r) {
+void multiply64to128x(uint64_t lhs, uint64_t rhs, inout uint128 r) {
 
         // First calculate all of the cross products.
 	uint64_t lo_lo = (lhs & 0xFFFFFFFFul) * (rhs & 0xFFFFFFFFul);
@@ -607,7 +612,8 @@ void pretf(uint128 k) {
 
 void main() {
 	uint I = gl_GlobalInvocationID.x;
-	// copy some counters back to shared memory
+
+	// copy some counters back to shared memory, just for sanity checks.
 	if (Init == 5) {
 		if (I == 0) {
 			Debug[0] = xLl;
@@ -709,7 +715,7 @@ void main() {
 		// no threads reach here.
 	}
 
- 	// perform the second sieve, populating list2
+ 	// perform the second sieve, populating list2.  Called before each call to Init==0
 	if (Init == 2) {
 		uint128 k;
 		k.Lo = K[0];
@@ -718,7 +724,7 @@ void main() {
 			uint128 kt = k;
 			Inc(kt);  // incase of 0.
 			pretf(kt);
-			return;
+			//return;
 		}
 		uint kmodm2 = Mod(k, M2);
 		uint kmodm3 = Mod(k, M3);
@@ -727,6 +733,9 @@ void main() {
 		uint kmodm6 = Mod(k, M6);
 		uint kmodm7 = Mod(k, M7);
 		uint kmodm8 = Mod(k, M8);
+		uint kmodm9 = Mod(k, M9);
+		uint kmodm0 = Mod(k, M0);
+		uint kmodm1 = Mod(k, M1);
 
 		while (true) {
 			uint i = atomicAdd(xL, 1);
@@ -747,7 +756,13 @@ void main() {
 			bool c7 = 0 == (X7[i7/32] & (1u << (i7%32)));
 			uint i8 = (o + kmodm8)%M8;
 			bool c8 = 0 == (X8[i8/32] & (1u << (i8%32)));
-			if (c2 && c3 && c4 && c5 && c6 && c7 && c8)
+			uint i9 = (o + kmodm9)%M9;
+			bool c9 = 0 == (X9[i9/32] & (1u << (i9%32)));
+			uint i0 = (o + kmodm0)%M0;
+			bool c0 = 0 == (X0[i0/32] & (1u << (i0%32)));
+			uint i1 = (o + kmodm1)%M1;
+			bool c1 = 0 == (X1[i1/32] & (1u << (i1%32)));
+			if (c2 && c3 && c4 && c5 && c6 && c7 && c8 && c9 && c0 && c1)
 			{
 				uint ii = atomicAdd(xL2, 1);
 				List2[ii] = List[i];
@@ -764,7 +779,7 @@ void main() {
 		// no threads reach here
 		//return;
 	}
-	// initialize our bit arrays to zero
+	// initialize our bit arrays to zero.  Only called once, before Init==1
 	if (Init == 3) {
 		while (true) {
 			uint i = atomicAdd(xL, 1);
@@ -792,6 +807,15 @@ void main() {
 			}
 			if (i <= M8/32) {
 				X8[i] = 0;
+			}
+			if (i <= M9/32) {
+				X9[i] = 0;
+			}
+			if (i <= M0/32) {
+				X0[i] = 0;
+			}
+			if (i <= M1/32) {
+				X1[i] = 0;
 			}
 		}
 	}
@@ -859,6 +883,24 @@ void main() {
 				bool c = (Mod0(Q,149)||Mod0(Q,151) || Mod0(Q,157));
 				if (c) {
 					atomicOr(X8[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M9) {
+				bool c = (Mod0(Q,163)||Mod0(Q,167) || Mod0(Q,173));
+				if (c) {
+					atomicOr(X9[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M0) {
+				bool c = (Mod0(Q,179)||Mod0(Q,181) || Mod0(Q,191));
+				if (c) {
+					atomicOr(X0[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M1) {
+				bool c = (Mod0(Q,193)||Mod0(Q,197) || Mod0(Q,199));
+				if (c) {
+					atomicOr(X1[i/32], 1u << (i%32));
 				}
 			}
 		}

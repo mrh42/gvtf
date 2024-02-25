@@ -298,6 +298,7 @@ func (result *Result) tfRun() {
 		p.Init = 2;  // run sieve2
 		C.runCommandBuffer()
 		if (uint(p.L3) > 0) {
+			// sanity check that only composites were tossed.
 			result.checkSieve(K, p)
 		}
 	}
@@ -309,7 +310,7 @@ func (result *Result) checkSieve(K *big.Int, p *C.struct_Stuff) {
 	fmt.Printf("# verify-L3: %d\n", p.L3)
 	// Verify the gpu side is working correctly.
 	// Check a subset of composite rejected K/Q values, to ensure they are not prime.
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 1000; i++ {
 		One := big.NewInt(1)
 		P := big.NewInt(int64(result.Exponent))
 		o := big.NewInt(int64(p.Test[i]))
