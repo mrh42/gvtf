@@ -24,14 +24,14 @@
 // also, maybe the difference isn't so much when not using uint64_t math.
 //
 
-#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23) // 446,185,740
+#define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 #define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
 #define M3 (47 * 53 * 59 * 61)                      //   8,965,109
 #define M4 (67 * 71 * 73 * 79)                      //  27,433,619
 #define M5 (83 * 89 * 97 * 101)                     //  72,370,439
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
 #define M7 (127 * 131 * 137 * 139)                  // 316,818,391
-#define M8 (149 * 151 * 157)
+#define M8 (149 * 151 * 157)                        //   3,532,343
 #define M9 (163 * 167 * 173)                        //   4,709,233
 #define M0 (179 * 181 * 191)                        //   6,188,209
 #define M1 (193 * 197 * 199)                        //   7,566,179
@@ -170,17 +170,7 @@ void Add(inout uint96 A, uint96 B) {
 	A.x[2] = A.x[2] + B.x[2] + c + c1;
 
 }
-void Subxx(inout uint192 A, uint192 B) {
 
-	uint c;
-	/// XXX this doesn't work, what about +c that overflows?  rare, but still fix it.
-	A.L.x[0] = usubBorrow(A.L.x[0], B.L.x[0], c);
-	A.L.x[1] = usubBorrow(A.L.x[1], B.L.x[1]+c, c);
-	A.L.x[2] = usubBorrow(A.L.x[2], B.L.x[2]+c, c);	
-	A.H.x[0] = usubBorrow(A.H.x[0], B.H.x[0]+c, c);	
-	A.H.x[1] = usubBorrow(A.H.x[1], B.H.x[1]+c, c);	
-	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c, c);	
-}
 void Sub(inout uint192 A, uint192 B) {
 
 	uint c, c1;
