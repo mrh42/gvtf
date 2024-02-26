@@ -666,7 +666,7 @@ void main() {
 			// the actual K this thread will test.
 			Add(k, oo);
 
-			if (Zero(k)) {return;}
+			if (Zero(k)) {continue;}
 
 			// 96/192-bit math
 			if (tf9(k)) {
@@ -701,7 +701,7 @@ void main() {
 			// the actual K this thread will test.
 			Add(k, oo);
 
-			if (Zero(k)) {return;}
+			if (Zero(k)) {continue;}
 
 			// 128/256 bit math
 			if (tf(k)) {

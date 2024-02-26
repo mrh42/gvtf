@@ -33,6 +33,8 @@
 #define M7 (127 * 131 * 137 * 139)                  // 316,818,391
 #define M8 (149 * 151 * 157)
 #define M9 (163 * 167 * 173)                        //   4,709,233
+#define M0 (179 * 181 * 191)                        //   6,188,209
+#define M1 (193 * 197 * 199)                        //   7,566,179
 
 #define ListN 72990720
 //#define ListN 2043740170
@@ -79,6 +81,8 @@ layout(binding = 1) buffer buf2
 	uint    X7[1+M7/32];
 	uint    X8[1+M8/32];
 	uint    X9[1+M9/32];
+	uint    X0[1+M0/32];
+	uint    X1[1+M1/32];
 };
 
 bool Zero(uint96 A) {
@@ -529,6 +533,8 @@ void main() {
 		uint kmodm7 = Mod(kbase, M7);
 		uint kmodm8 = Mod(kbase, M8);
 		uint kmodm9 = Mod(kbase, M9);
+		uint kmodm0 = Mod(kbase, M0);
+		uint kmodm1 = Mod(kbase, M1);
 
 		while (true) {
 			uint i = atomicAdd(xL, 1);
@@ -553,7 +559,11 @@ void main() {
 			bool c8 = 0 == (X8[i8/32] & (1u << (i8%32)));
 			uint i9 = (o + kmodm9)%M9;
 			bool c9 = 0 == (X9[i9/32] & (1u << (i9%32)));
-			if (c2 && c3 && c4 && c5 && c6 && c7 && c8 && c9)
+			uint i0 = (o + kmodm0)%M0;
+			bool c0 = 0 == (X0[i0/32] & (1u << (i0%32)));
+			uint i1 = (o + kmodm1)%M1;
+			bool c1 = 0 == (X1[i1/32] & (1u << (i1%32)));
+			if (c2 && c3 && c4 && c5 && c6 && c7 && c8 && c9 && c0 && c1)
 			{
 			     	uint ii = atomicAdd(xL2, 1);
 				List2[ii] = List[i];
@@ -599,6 +609,12 @@ void main() {
 			}
 			if (i <= M9/32) {
 				X9[i] = 0;
+			}
+			if (i <= M0/32) {
+				X0[i] = 0;
+			}
+			if (i <= M1/32) {
+				X1[i] = 0;
 			}
 		}
 	}
@@ -673,6 +689,18 @@ void main() {
 				bool c = (Mod0(Q,163)||Mod0(Q,167) || Mod0(Q,173));
 				if (c) {
 					atomicOr(X9[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M0) {
+				bool c = (Mod0(Q,179)||Mod0(Q,181) || Mod0(Q,191));
+				if (c) {
+					atomicOr(X0[i/32], 1u << (i%32));
+				}
+			}
+			if (i < M1) {
+				bool c = (Mod0(Q,193)||Mod0(Q,197) || Mod0(Q,199));
+				if (c) {
+					atomicOr(X1[i/32], 1u << (i%32));
 				}
 			}
 		}
