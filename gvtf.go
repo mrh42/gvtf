@@ -141,6 +141,7 @@ func initInput(P uint64) int {
 	C.runCommandBuffer()
 	p.Init = 1   // first sieve
 	C.runCommandBuffer()
+	fmt.Printf("# GPU threads used for init: %d\n", p.Debug[2])
 
 	p.Init = 5;  // copy back atomic counters, to check it went correctly
 	C.runCommandBuffer()
