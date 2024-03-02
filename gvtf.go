@@ -227,7 +227,7 @@ func (result *Result) tfRun() {
 	p.Init = 5;  // copy L2 back, for sanity checking
 	C.runCommandBuffer()
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# L2: %d Ll: %d, e: %s\n", p.Debug[1], p.Debug[0], elapsed)
+	fmt.Printf("# L2: %d/%d Ll: %d, e: %s\n", p.Debug[1], M, p.Debug[0], elapsed)
 
 	if result.kfactors == nil {
 		result.kfactors = make([]*big.Int, 0, 10)

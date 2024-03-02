@@ -4,10 +4,10 @@
 //#extension GL_ARB_gpu_shader_int64 : enable
 //#extension GL_EXT_debug_printf : enable
 //#extension GL_KHR_shader_subgroup_vote : enable
-#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
 //#extension GL_EXT_shader_explicit_arithmetic_types_int16 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
-#extension GL_EXT_shader_atomic_int64: enable
+//#extension GL_EXT_shader_atomic_int64: enable
 
 // This SPIR-V from this file is compiled into the gvtf binary, selected with version=192 or version=256
 //
@@ -31,7 +31,7 @@
 // When the entire list has been tested, K-base += M.
 #define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 
-#define MnLen 19
+#define MnLen 22
 const uint Mn[MnLen] = {
 	(179 * 181 * 191),                  // 0 -   6,188,209
 	(193 * 197 * 199),                  // 1 -   7,566,179
@@ -52,6 +52,10 @@ const uint Mn[MnLen] = {
 	(311 * 313 * 317),                  // 16-  30,857,731
 	(331 * 337 * 347),                  // 17-  38,706,809
 	(349 * 353 * 359),                  // 18-  44,227,723
+	(367 * 373 * 379),                  // 19-  51,881,689
+	(383 * 389 * 397),                  // 20-  59,147,839
+	(401 * 409 * 419),                  // 21-  68,719,771
+//	(421 * 431 * 433),                  // 22-  78,568,283
 };
 #define ListN 72990720
 layout (local_size_x = 64) in;
@@ -85,19 +89,6 @@ layout(binding = 1) buffer buf2
 	int        PreTop;
 	uint128    PreSq;
 	uint    Xx[MnLen][1+Mn[6]/32];
-/*	uint    X2[1+M2/32];
-	uint    X3[1+M3/32];
-	uint    X4[1+M4/32];
-	uint    X5[1+M5/32];
-	uint    X6[1+M6/32];
-	uint    X7[1+M7/32];
-	uint    X8[1+M8/32];
-	uint    X9[1+M9/32];
-	uint    X0[1+M0/32];
-	uint    X1[1+M1/32];
-	uint    XA[1+MA/32];
-	uint    XB[1+MB/32];
-	uint    XC[1+MC/32];*/
 };
 
 
@@ -756,19 +747,20 @@ void main() {
 			for (int j = 0; j < lim; j++) {
 				uint ix = (o + kmod[j])%Mn[j];
 				bool cx = 0 == (Xx[j][ix/32] & (1u << (ix%32)));
-				if (!cx) {cc = false; }
+				//if (!cx) {cc = false;}
+				cc = cc && cx;
 			}
 			if (cc)
 			{
 				uint ii = atomicAdd(xL2, 1);
-				List2[ii] = List[i];
+				List2[ii] = o;
 			} else if (false) {
 				// Just for debugging, normally not used.
 				// Give a sample of composites back to the CPU for primality testing.
 				// This is just for looking for bugs in the sieving process.
 			     	uint ii = atomicAdd(L3, 1);
 				if (ii < 1000) {
-					Test[ii] = List[i];
+					Test[ii] = o;
 				}
 			}
 		}
@@ -779,7 +771,7 @@ void main() {
 	if (Init == 3) {
 		while (true) {
 			uint i = atomicAdd(xL, 1);
-			if (i > 1+Mn[6]/32) {
+			if (i >= 1+Mn[6]/32) {
 				// All threads return here.
 				return;
 			}
@@ -933,6 +925,30 @@ void main() {
 					atomicOr(Xx[18][i/32], 1u << (i%32));
 				}
 			}
+			if (i < Mn[19]) {
+				bool c = (Mod0(Q,367)||Mod0(Q,373) || Mod0(Q,379));
+				if (c) {
+					atomicOr(Xx[19][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[20]) {
+				bool c = (Mod0(Q,383)||Mod0(Q,389) || Mod0(Q,397));
+				if (c) {
+					atomicOr(Xx[20][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[21]) {
+				bool c = (Mod0(Q,401)||Mod0(Q,409) || Mod0(Q,419));
+				if (c) {
+					atomicOr(Xx[21][i/32], 1u << (i%32));
+				}
+			}/*
+			if (i < Mn[22]) {
+				bool c = (Mod0(Q,421)||Mod0(Q,431) || Mod0(Q,433));
+				if (c) {
+					atomicOr(Xx[22][i/32], 1u << (i%32));
+				}
+			}*/
 		}
 		// no threads reach here.
 	}

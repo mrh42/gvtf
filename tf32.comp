@@ -25,7 +25,7 @@
 //
 
 #define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
-#define MnLen 19
+#define MnLen 22
 const uint Mn[MnLen] = {
 	(179 * 181 * 191),                  // 0 -   6,188,209
 	(193 * 197 * 199),                  // 1 -   7,566,179
@@ -46,6 +46,13 @@ const uint Mn[MnLen] = {
 	(311 * 313 * 317),                  // 16-  30,857,731
 	(331 * 337 * 347),                  // 17-  38,706,809
 	(349 * 353 * 359),                  // 18-  44,227,723
+	(367 * 373 * 379),                  // 19-  51,881,689
+	(383 * 389 * 397),                  // 20-  59,147,839
+	(401 * 409 * 419),                  // 21-  68,719,771
+//	(421 * 431 * 433),                  // 22-  78,568,283
+//	(439 * 443 * 449),                  // 23-  87,320,173
+//	(457 * 461 * 463),                  // 24-  97,543,451
+//	(467 * 479 * 487),                  // 25- 108,938,491
 };
 
 #define ListN 72990720
@@ -534,18 +541,19 @@ void main() {
 			for (int j = 0; j < lim; j++) {
 				uint ix = (o + kmod[j])%Mn[j];
 				bool cx = 0 == (Xx[j][ix/32] & (1u << (ix%32)));
-				if (!cx) {cc = false; }
+				//if (!cx) {cc = false; }
+				cc = cc && cx;
 			}
 			if (cc)
 			{
 			     	uint ii = atomicAdd(xL2, 1);
-				List2[ii] = List[i];
+				List2[ii] = o;
 			} else if (false) {
 				// Give a sample of composites back to the CPU for primality testing.
 				// This is just for looking for bugs in the sieving process.
 			     	uint ii = atomicAdd(L3, 1);
 				if (ii < 1000) {
-					Test[ii] = List[i];
+					Test[ii] = o;
 				}
 			}
 		}
@@ -555,7 +563,7 @@ void main() {
 	if (Init == 3) {
 		while (true) {
 			uint i = atomicAdd(xL, 1);
-			if (i > 1+Mn[6]/32) {
+			if (i >= 1+Mn[6]/32) {
 				// All threads return here.
 				return;
 			}
@@ -710,6 +718,48 @@ void main() {
 					atomicOr(Xx[18][i/32], 1u << (i%32));
 				}
 			}
+			if (i < Mn[19]) {
+				bool c = (Mod0(Q,367)||Mod0(Q,373) || Mod0(Q,379));
+				if (c) {
+					atomicOr(Xx[19][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[20]) {
+				bool c = (Mod0(Q,383)||Mod0(Q,389) || Mod0(Q,397));
+				if (c) {
+					atomicOr(Xx[20][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[21]) {
+				bool c = (Mod0(Q,401)||Mod0(Q,409) || Mod0(Q,419));
+				if (c) {
+					atomicOr(Xx[21][i/32], 1u << (i%32));
+				}
+			}/*
+			if (i < Mn[22]) {
+				bool c = (Mod0(Q,421)||Mod0(Q,431) || Mod0(Q,433));
+				if (c) {
+					atomicOr(Xx[22][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[23]) {
+				bool c = (Mod0(Q,439)||Mod0(Q,443) || Mod0(Q,449));
+				if (c) {
+					atomicOr(Xx[23][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[24]) {
+				bool c = (Mod0(Q,457)||Mod0(Q,461) || Mod0(Q,463));
+				if (c) {
+					atomicOr(Xx[24][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[25]) {
+				bool c = (Mod0(Q,467)||Mod0(Q,479) || Mod0(Q,487));
+				if (c) {
+					atomicOr(Xx[25][i/32], 1u << (i%32));
+				}
+			}*/
 		}
 		// no threads reach here.
 		return;

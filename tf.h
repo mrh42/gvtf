@@ -8,20 +8,9 @@
 //
 
 #define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
-#define M2 (29 * 31 * 37 * 41 * 43)                 //  58,642,669
-#define M3 (47 * 53 * 59 * 61)                      //   8,965,109
-#define M4 (67 * 71 * 73 * 79)                      //  27,433,619
-#define M5 (83 * 89 * 97 * 101)                     //  72,370,439
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
-#define M7 (127 * 131 * 137 * 139)                  // 316,818,391
-#define M8 (149 * 151 * 157)                        //   3,532,343
-#define M9 (163 * 167 * 173)                        //   4,709,233
-#define M0 (179 * 181 * 191)                        //   6,188,209
-#define M1 (193 * 197 * 199)                        //   7,566,179
-#define MA (211 * 223 * 227)                        //  10,775,137
-#define MB (229 * 233 * 239)                        //  12,752,323
-#define MC (241 * 251 * 257)                        //  15,546,187
 
+#define MnLen 22
 
 #define ListLen 72990720
 //#define ListLen 2043740170
@@ -50,20 +39,7 @@ struct Stuff2 {
 	uint32_t    List2[ListLen];
 	uint32_t    PreTop;
 	uint64_t    PreSq[2];
-	uint32_t    Xx[19][1+M6/32];
-/*	uint32_t    X2[1+M2/32];
-	uint32_t    X3[1+M3/32];
-	uint32_t    X4[1+M4/32];
-	uint32_t    X5[1+M5/32];
-	uint32_t    X6[1+M6/32];
-	uint32_t    X7[1+M7/32];
-	uint32_t    X8[1+M8/32];
-	uint32_t    X9[1+M9/32];
-	uint32_t    X0[1+M0/32];
-	uint32_t    X1[1+M1/32];
-	uint32_t    XA[1+MA/32];
-	uint32_t    XB[1+MB/32];
-	uint32_t    XC[1+MC/32];*/
+	uint32_t    Xx[MnLen][1+M6/32];
 };
 
 
