@@ -376,6 +376,243 @@ void to96(uint64_t n, inout uint96 o) {
 	o.x = uvec3(p0, p1, 0);
 }
 
+
+
+// -------------------- Montgomery (b = 2^32) for uint96 modulus --------------------
+
+// 32-bit inverse mod 2^32 (Newton iteration), for odd a
+uint InvMod2_32(uint a) {
+    // Returns a^{-1} mod 2^32 (a must be odd)
+    uint x = 1u;
+    // bits: 1->2->4->8->16->32  (5 iterations)
+    for (int i = 0; i < 5; i++) {
+        x = x * (2u - a * x);
+    }
+    return x;
+}
+
+// n0' = -n0^{-1} mod 2^32, where n0 is the low limb of N
+uint MontN0Prime(uint96 N) {
+    return 0u - InvMod2_32(N.x[0]);
+}
+
+bool Eq96(uint96 A, uint96 B) {
+    return all(equal(A.x, B.x));
+}
+
+// Subtract (B) from (top:A) where top is the extra 4th limb.
+// Assumes (top:A) >= B.
+void Sub96Top(inout uint96 A, inout uint top, uint96 B) {
+    uint64_t a0 = uint64_t(A.x[0]);
+    uint64_t a1 = uint64_t(A.x[1]);
+    uint64_t a2 = uint64_t(A.x[2]);
+    uint64_t a3 = uint64_t(top);
+
+    uint64_t b0 = uint64_t(B.x[0]);
+    uint64_t b1 = uint64_t(B.x[1]);
+    uint64_t b2 = uint64_t(B.x[2]);
+
+    uint64_t r0 = a0 - b0;
+    uint64_t borrow = (a0 < b0) ? 1ul : 0ul;
+
+    uint64_t t = b1 + borrow;
+    uint64_t r1 = a1 - t;
+    borrow = (a1 < t) ? 1ul : 0ul;
+
+    t = b2 + borrow;
+    uint64_t r2 = a2 - t;
+    borrow = (a2 < t) ? 1ul : 0ul;
+
+    // top -= borrow
+    uint64_t r3 = a3 - borrow;
+
+    A.x[0] = uint(r0);
+    A.x[1] = uint(r1);
+    A.x[2] = uint(r2);
+    top    = uint(r3);
+}
+
+// Reduce a 192-bit T modulo N using Montgomery (N is 96-bit, odd)
+void MontReduce3(uint192 T, uint96 N, uint n0prime, out uint96 R) {
+    // T as 6 limbs t0..t5 (little endian)
+    uint t0 = T.L.x[0];
+    uint t1 = T.L.x[1];
+    uint t2 = T.L.x[2];
+    uint t3 = T.H.x[0];
+    uint t4 = T.H.x[1];
+    uint t5 = T.H.x[2];
+    uint t6 = 0u; // extra carry limb
+
+    for (int i = 0; i < 3; i++) {
+        uint m = t0 * n0prime; // mod 2^32 by wraparound
+
+        uint hi0, lo0, hi1, lo1, hi2, lo2;
+        umulExtended(m, N.x[0], hi0, lo0);
+        umulExtended(m, N.x[1], hi1, lo1);
+        umulExtended(m, N.x[2], hi2, lo2);
+
+        // Add (m*N) into (t0..t6), aligned at limb 0, using 64-bit accumulators
+        uint64_t acc;
+        uint64_t carry;
+
+        acc = uint64_t(t0) + uint64_t(lo0);
+        t0 = uint(acc);
+        carry = acc >> 32;
+
+        acc = uint64_t(t1) + uint64_t(hi0) + uint64_t(lo1) + carry;
+        t1 = uint(acc);
+        carry = acc >> 32;
+
+        acc = uint64_t(t2) + uint64_t(hi1) + uint64_t(lo2) + carry;
+        t2 = uint(acc);
+        carry = acc >> 32;
+
+        acc = uint64_t(t3) + uint64_t(hi2) + carry;
+        t3 = uint(acc);
+        carry = acc >> 32;
+
+        acc = uint64_t(t4) + carry;
+        t4 = uint(acc);
+        carry = acc >> 32;
+
+        acc = uint64_t(t5) + carry;
+        t5 = uint(acc);
+        carry = acc >> 32;
+
+        t6 += uint(carry);
+
+        // Divide by b (shift right 32): drop t0
+        t0 = t1;
+        t1 = t2;
+        t2 = t3;
+        t3 = t4;
+        t4 = t5;
+        t5 = t6;
+        t6 = 0u;
+    }
+
+    // Candidate is (t3: t2:t1:t0) but we only keep low 96 bits in R; t3 is "extra top" limb.
+    uint top = t3;
+    uint96 res;
+    res.x = uvec3(t0, t1, t2);
+
+    // If top != 0 OR res >= N, subtract N once
+    if (top != 0u || Cmp(res, N) >= 0) {
+        Sub96Top(res, top, N); // top should become 0
+    }
+
+    // Safety: ensure fully reduced
+    if (Cmp(res, N) >= 0) {
+        uint z = 0u;
+        Sub96Top(res, z, N);
+    }
+
+    R = res;
+}
+
+void MontMul96(uint96 A, uint96 B, uint96 N, uint n0prime, out uint96 R) {
+    uint192 T;
+    Mul192(A, B, T);
+    MontReduce3(T, N, n0prime, R);
+}
+
+void MontSquare96(inout uint96 A, uint96 N, uint n0prime) {
+    uint96 t;
+    MontMul96(A, A, N, n0prime, t);
+    A = t;
+}
+
+// Multiply-by-2 in Montgomery form is just doubling mod N
+void MontDouble96(inout uint96 A, uint96 N) {
+    uint64_t acc = uint64_t(A.x[0]) + uint64_t(A.x[0]);
+    A.x[0] = uint(acc);
+    uint64_t carry = acc >> 32;
+
+    acc = uint64_t(A.x[1]) + uint64_t(A.x[1]) + carry;
+    A.x[1] = uint(acc);
+    carry = acc >> 32;
+
+    acc = uint64_t(A.x[2]) + uint64_t(A.x[2]) + carry;
+    A.x[2] = uint(acc);
+    // carry beyond 96 bits implies A >= 2^96, definitely >= N
+    if ((acc >> 32) != 0ul || Cmp(A, N) >= 0) {
+        // subtract N once
+        uint z = 0u;
+        Sub96Top(A, z, N);
+    }
+}
+
+// --------- helper to compute R mod N once (R = 2^96) using your existing float reducer style ---------
+void ReduceMod192(inout uint192 X, uint96 Q, double qinv) {
+    uint192 Y;
+    uint96 D;
+
+    // Two quick passes like SqMod()
+    fto96(toF(X) * qinv, D);
+    Mul192(D, Q, Y);
+    Sub(X, Y);
+
+    fto96(toF(X) * qinv, D);
+    Mul192(D, Q, Y);
+    Sub(X, Y);
+
+    while (Cmp(X, Q) > 0) {
+        fto96(toF(X) * qinv, D);
+        if (Zero(D)) { D.x[0] = 1u; }
+        Mul192(D, Q, Y);
+        Sub(X, Y);
+    }
+}
+
+// oneBar = R mod Q, where R = 2^96 (Montgomery representation of 1 for 96-bit modulus)
+void MontOne96(uint96 Q, double qinv, out uint96 oneBar) {
+    uint192 X;
+    X.L.x = uvec3(0u, 0u, 0u);
+    X.H.x = uvec3(1u, 0u, 0u); // X = 2^96
+    ReduceMod192(X, Q, qinv);
+    oneBar = X.L;
+}
+
+// --------- Exp base 2: returns true iff 2^P mod Q == 1 (i.e., Q divides M_P) ---------
+// Montgomery version
+//
+bool tfm(uint96 k) {
+	uint96 sq, Q, pp;
+	uint192 t;
+
+	// q = 2 * p * k + 1
+	to96(P, pp);
+	Mul192(k, pp, t);
+	Q = t.L;  // q is limited to 96-bits
+	Lsh(Q);
+	Inc(Q);
+	double qinv = 0.9999999999999 / toF(Q);
+
+	uint96 oneBar;
+	MontOne96(Q, qinv, oneBar);
+
+	uint n0prime = MontN0Prime(Q);
+
+	uint96 A = oneBar; // 1 in Montgomery form
+
+	int top = int(findMSB(P));
+	uint64_t one = 1ul << top;
+	
+	for (int b = top; b >= 0; b--) {
+		bool bit = (P & one) != 0ul;
+		one >>= 1;
+		
+		MontSquare96(A, Q, n0prime);
+		if (bit) {
+			MontDouble96(A, Q);
+		}
+	}
+
+	// 2^P mod Q == 1  <=>  A == 1 (in Montgomery) <=> A == oneBar
+	return Eq96(A, oneBar);
+}
+
+
 bool tf(uint96 k) {
 	uint96 sq, q, pp;
 	uint192 t;
@@ -506,7 +743,7 @@ void main() {
 			// the actual K this thread will test.
 			Add(k, o);
 
-			if (tf(k)) {
+			if (tfm(k)) {
 				// How many have we found?
 				uint f = atomicAdd(NFound, 1);
 				// return the 96-bit K

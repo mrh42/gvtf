@@ -234,6 +234,23 @@ void Add(inout uint128 A, uint128 B) {
 	A.Hi = A.Hi + (B.Hi + C);
 	A.Lo = x;
 }
+// Add two uint256 values
+void Add256(inout uint256 A, uint256 B) {
+    uint64_t r = A.L.Lo + B.L.Lo;
+    uint64_t c = (r < A.L.Lo) ? 1 : 0;
+    A.L.Lo = r;
+    
+    r = A.L.Hi + B.L.Hi + c;
+    c = (r < A.L.Hi || (c == 1 && r == A.L.Hi)) ? 1 : 0;
+    A.L.Hi = r;
+    
+    r = A.H.Lo + B.H.Lo + c;
+    c = (r < A.H.Lo || (c == 1 && r == A.H.Lo)) ? 1 : 0;
+    A.H.Lo = r;
+    
+    A.H.Hi += B.H.Hi + c;
+}
+
 bool Zero(uint128 A) {
 	return A.Lo == 0 && A.Hi == 0;
 }
@@ -286,6 +303,8 @@ void Mul128(uint128 A, uint64_t B, inout uint128 X) {
 	multiply64to128(A.Hi, B, T);
 	X.Hi += T.Lo;
 }
+
+
 void Sq256(uint128 A, inout uint256 X) {
 	multiply64to128(A.Hi, A.Hi, X.H);
 	multiply64to128(A.Lo, A.Lo, X.L);
@@ -365,6 +384,7 @@ void Mul256(uint128 A, uint128 B, inout uint256 X) {
 		X.H.Hi++;
 	}
 }
+
 // 2^64, 2^128 and 2^192
 const 	double p64 =  18446744073709551616.0lf;
 const	double p128 = 340282366920938463463374607431768211456.0lf;
@@ -385,6 +405,195 @@ void fto128(double f, out uint128 A) {
 	A.Hi = uint64_t(f / p64);
 	A.Lo = uint64_t(f - double(A.Hi) * p64);
 }
+
+
+// ---------- 64-bit inverse mod 2^64 (Newton iteration), for odd a ----------
+uint64_t InvMod2_64(uint64_t a) {
+    // Returns a^{-1} mod 2^64 (a must be odd)
+    uint64_t x = uint64_t(1);
+    // Each iteration doubles correct bits: 1->2->4->8->16->32->64
+    for (int i = 0; i < 6; i++) {
+        x = x * (uint64_t(2) - a * x);
+    }
+    return x;
+}
+
+// n0' = -n0^{-1} mod 2^64, where n0 is the low limb of N
+uint64_t MontN0Prime(uint128 N) {
+    return uint64_t(0) - InvMod2_64(N.Lo);
+}
+
+// ---------- Montgomery reduction for 2-limb (128-bit) modulus ----------
+void MontReduce2(uint256 T, uint128 N, uint64_t n0prime, out uint128 R) {
+    // limbs: t0,t1,t2,t3 are 256-bit; keep one extra top limb t4 for carry safety
+    uint64_t t0 = T.L.Lo;
+    uint64_t t1 = T.L.Hi;
+    uint64_t t2 = T.H.Lo;
+    uint64_t t3 = T.H.Hi;
+    uint64_t t4 = 0;
+
+    for (int i = 0; i < 2; i++) {
+        uint64_t m = t0 * n0prime; // (t0 * n0') mod 2^64 via wraparound
+
+        uint128 p0, p1;
+        multiply64to128(m, N.Lo, p0); // m*N0
+        multiply64to128(m, N.Hi, p1); // m*N1
+
+        // Add (m*N) into (t0..t4), aligned at limb 0:
+        // contributes: p0.Lo -> t0, p0.Hi -> t1
+        //              p1.Lo -> t1, p1.Hi -> t2
+        uint64_t carry;
+
+        // t0 += p0.Lo
+        uint64_t s = t0 + p0.Lo;
+        carry = (s < t0) ? 1ul : 0ul;
+        t0 = s;
+
+        // t1 += p0.Hi + p1.Lo + carry
+        uint64_t c1, c2, c3;
+        s = t1 + p0.Hi;  c1 = (s < t1) ? 1ul : 0ul;  t1 = s;
+        s = t1 + p1.Lo;  c2 = (s < t1) ? 1ul : 0ul;  t1 = s;
+        s = t1 + carry;  c3 = (s < t1) ? 1ul : 0ul;  t1 = s;
+        carry = c1 + c2 + c3; // 0..2
+
+        // t2 += p1.Hi + carry
+        s = t2 + p1.Hi;  c1 = (s < t2) ? 1ul : 0ul;  t2 = s;
+        s = t2 + carry;  c2 = (s < t2) ? 1ul : 0ul;  t2 = s;
+        carry = c1 + c2; // 0..2
+
+        // t3 += carry, propagate into t4
+        s = t3 + carry;
+        c1 = (s < t3) ? 1ul : 0ul;
+        t3 = s;
+        t4 += c1; // 0..1
+
+        // Divide by b (shift right 64): drop t0
+        t0 = t1;
+        t1 = t2;
+        t2 = t3;
+        t3 = t4;
+        t4 = 0;
+    }
+
+    // Now we have a 3-limb value: t0 + t1*b + t2*b^2 (t3==0)
+    uint128 res; res.Lo = t0; res.Hi = t1;
+
+    // If top limb nonzero OR res >= N, subtract N once (on the 3-limb number)
+    if (t2 != 0 || Cmp(res, N) >= 0) {
+        // subtract N from (t2:res.Hi:res.Lo)
+        uint64_t lo = res.Lo;
+        uint64_t hi = res.Hi;
+        uint64_t top = t2;
+
+        uint64_t x = lo - N.Lo;
+        uint64_t borrow = (x > lo) ? 1ul : 0ul;
+        lo = x;
+
+        x = hi - N.Hi;
+        uint64_t b2 = (x > hi) ? 1ul : 0ul;
+        hi = x;
+
+        if (borrow != 0) {
+            x = hi - 1ul;
+            b2 += (x > hi) ? 1ul : 0ul;
+            hi = x;
+        }
+
+        top = top - b2; // should land at 0
+        res.Lo = lo;
+        res.Hi = hi;
+    }
+
+    // Safety (should be unnecessary, but cheap)
+    if (Cmp(res, N) >= 0) {
+        Sub(res, N);
+    }
+
+    R = res;
+}
+
+void MontMul(uint128 A, uint128 B, uint128 N, uint64_t n0prime, out uint128 R) {
+    uint256 T;
+    Mul256(A, B, T);
+    MontReduce2(T, N, n0prime, R);
+}
+
+void MontSquare(inout uint128 A, uint128 N, uint64_t n0prime) {
+    uint128 t;
+    MontMul(A, A, N, n0prime, t);
+    A = t;
+}
+
+// Multiply-by-2 in Montgomery form is just doubling mod N
+void MontDouble(inout uint128 A, uint128 N) {
+    Add(A, A);
+    if (Cmp(A, N) >= 0) { Sub(A, N); }
+}
+
+// ---------- (Optional) reuse your float-based reducer ONLY to get R mod N ----------
+void ReduceMod256(inout uint256 X, uint128 Q, double qinv) {
+    uint256 Y;
+    uint128 D;
+
+    // two quick ?cheap? passes like your SqMod()
+    double x = toF(X);
+    fto128(x * qinv, D);
+    Mul256(D, Q, Y);
+    Sub(X, Y);
+
+    x = toF(X);
+    fto128(x * qinv, D);
+    Mul256(D, Q, Y);
+    Sub(X, Y);
+
+    // refine until < Q
+    while (Cmp(X, Q) > 0) {
+        x = toF(X);
+        fto128(x * qinv, D);
+        if (Zero(D)) { D.Lo = 1; }
+        Mul256(D, Q, Y);
+        Sub(X, Y);
+    }
+}
+
+// oneBar = R mod Q, where R = 2^128 (Montgomery representation of 1)
+void MontOne(uint128 Q, double qinv, out uint128 oneBar) {
+    uint256 X;
+    X.L.Lo = 0; X.L.Hi = 0;
+    X.H.Lo = 1; X.H.Hi = 0; // X = 2^128
+    ReduceMod256(X, Q, qinv);
+    oneBar = X.L;
+}
+
+// ---------- Your requested Exp(2, P, Q) test using Montgomery ----------
+bool Exp2Equals1_Mont(uint64_t P, uint128 Q) {
+    // qinv only used to compute R mod Q once; inner loop is pure Montgomery.
+    double qinv = 0.99999999999999 / toF(Q);
+
+    uint128 oneBar;
+    MontOne(Q, qinv, oneBar);
+
+    uint64_t n0prime = MontN0Prime(Q);
+
+    uint128 A = oneBar; // starts at 1 in Montgomery form
+
+    int top = int(findMSB(P));
+    uint64_t one = uint64_t(1);
+
+    for (int b = top; b >= 0; b--) {
+        MontSquare(A, Q, n0prime);
+        if ((P & (one << b)) != 0) {
+            MontDouble(A, Q); // multiply-by-2 step
+        }
+    }
+
+    // 2^P mod Q == 1  <=>  A == 1 (in Montgomery) <=> A == oneBar
+    return (A.Lo == oneBar.Lo) && (A.Hi == oneBar.Hi);
+}
+
+
+
+
 
 // 256-bit Floating point version
 void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
@@ -410,7 +619,7 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		Mul256(D, Q, Y);
 		Sub(X, Y);
 	}
-	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
+	//int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
 
 	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
 	// Always guess D a little low, and refine our guess as we get closer.
@@ -426,7 +635,7 @@ void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		Mul256(D, Q, Y);
 
 		Sub(X, Y);
-		i++;
+		//i++;
 	}
 	//if (i > 3) {Debug[1]++;}
 	A = X.L;
@@ -454,7 +663,7 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		Sub(X, Y);
 	}
 
-	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
+	//int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
 
 	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
 	// Always guess D a little low, and refine our guess as we get closer.
@@ -469,7 +678,7 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 		}
 		Mul192(D, Q, Y);
 		Sub(X, Y);
-		i++;
+		//i++;
 	}
 	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
 	A = X.L;
@@ -518,6 +727,18 @@ bool Mod0(uint128 X, uint64_t Q) {
 	return Zero(X) || X.Lo == Q;
 }
 
+// Montgomery version
+bool tfm(uint128 k) {
+	uint128 sq, q, r;
+
+	Mul128(k, P, q);
+	Lsh(q);
+	Inc(q);
+
+	return Exp2Equals1_Mont(P, q);
+}
+
+// 256-bit version
 bool tf(uint128 k) {
 	uint128 sq, q;
 
@@ -547,6 +768,8 @@ bool tf(uint128 k) {
 	// If the result is 1, then we found a factor.
 	return sq.Lo == 1 && sq.Hi == 0;
 }
+
+// 192-bit version
 bool tf9(uint128 k) {
 	uint128 sq, q;
 
@@ -649,7 +872,8 @@ void main() {
 	}
 	// TF run
 	if (Init == 0) {
-		while (Big == 0) {
+		// while (Big == 0) {
+		while (true) {
 			//
 			// K is the base starting value for this invocation. 
 			//
@@ -675,43 +899,9 @@ void main() {
 
 			if (Zero(k)) {continue;}
 
-			// 96/192-bit math
-			if (tf9(k)) {
-				// How many have we found?
-				uint f = atomicAdd(NFound, 1);
-				// return the 128-bit K values
-				Found[f][0] = k.Lo;
-				Found[f][1] = k.Hi;
-			}
-		}
-		while (Big == 1) {
-			//
-			// K is the base starting value for this invocation. 
-			//
-			uint128 k;
-			k.Lo = K[0];
-			k.Hi = K[1];
-
-			// get the next index from the List to test
-			uint i = atomicAdd(xL, 1);
-			if (i >= xL2) {
-				// All threads return here.
-				return;
-			}
-			uint o = List2[i];
-			uint128 oo;
-
-			// offset from the base K
-			oo.Lo = o;
-			oo.Hi = 0;
-
-			// the actual K this thread will test.
-			Add(k, oo);
-
-			if (Zero(k)) {continue;}
-
-			// 128/256 bit math
-			if (tf(k)) {
+			
+			//if (tf9(k)) {  // 96/192-bit math
+			if (tfm(k)) {    // Montgomery version
 				// How many have we found?
 				uint f = atomicAdd(NFound, 1);
 				// return the 128-bit K values
