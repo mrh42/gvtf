@@ -535,13 +535,8 @@ void ReduceMod256(inout uint256 X, uint128 Q, double qinv) {
     uint256 Y;
     uint128 D;
 
-    // two quick ?cheap? passes like your SqMod()
+    // it is faster to do this w/o testing, even if D might be zero and have no effect.
     double x = toF(X);
-    fto128(x * qinv, D);
-    Mul256(D, Q, Y);
-    Sub(X, Y);
-
-    x = toF(X);
     fto128(x * qinv, D);
     Mul256(D, Q, Y);
     Sub(X, Y);
@@ -592,8 +587,62 @@ bool Exp2Equals1_Mont(uint64_t P, uint128 Q) {
 }
 
 
+uint Mod(uint128 X, uint Q) {
+	if (X.Hi == 0) {
+		return uint(X.Lo % Q);
+	}
+	uint128 Y, D;
+	int i = 0;
+	double qinv = 0.9999999999999 / double(Q);
+	while (i < 10 && Cmp(X, Q) > 0) {
+		double x = toF(X);
+		double xqi = x * qinv;
+		fto128(xqi, D);
+		if (Zero(D)) {
+			D.Lo = 1;
+		}
+		Mul128(D, Q, Y);
+		Sub(X, Y);
+		i++;
+	}
+	if (X.Lo == Q) return 0;
+	return uint(X.Lo);
+}
+
+bool Mod0(uint128 X, uint64_t Q) {
+	if (X.Hi == 0) {
+		return (X.Lo % Q) == 0;
+	}
+	uint128 Y, D;
+	int i = 0;
+	double qinv = 0.9999999999999 / double(Q);
+	while (i < 10 && Cmp(X, Q) > 0) {
+		double x = toF(X);
+		double xqi = x * qinv;
+		fto128(xqi, D);
+		if (Zero(D)) {
+			D.Lo = 1;
+		}
+		Mul128(D, Q, Y);
+		Sub(X, Y);
+		i++;
+	}
+	return Zero(X) || X.Lo == Q;
+}
+
+// Montgomery version
+bool tfm(uint128 k) {
+	uint128 sq, q, r;
+
+	Mul128(k, P, q);
+	Lsh(q);
+	Inc(q);
+
+	return Exp2Equals1_Mont(P, q);
+}
 
 
+/*
 
 // 256-bit Floating point version
 void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
@@ -684,59 +733,6 @@ void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
 	A = X.L;
 }
 
-uint Mod(uint128 X, uint Q) {
-	if (X.Hi == 0) {
-		return uint(X.Lo % Q);
-	}
-	uint128 Y, D;
-	int i = 0;
-	double qinv = 0.9999999999999 / double(Q);
-	while (i < 10 && Cmp(X, Q) > 0) {
-		double x = toF(X);
-		double xqi = x * qinv;
-		fto128(xqi, D);
-		if (Zero(D)) {
-			D.Lo = 1;
-		}
-		Mul128(D, Q, Y);
-		Sub(X, Y);
-		i++;
-	}
-	if (X.Lo == Q) return 0;
-	return uint(X.Lo);
-}
-
-bool Mod0(uint128 X, uint64_t Q) {
-	if (X.Hi == 0) {
-		return (X.Lo % Q) == 0;
-	}
-	uint128 Y, D;
-	int i = 0;
-	double qinv = 0.9999999999999 / double(Q);
-	while (i < 10 && Cmp(X, Q) > 0) {
-		double x = toF(X);
-		double xqi = x * qinv;
-		fto128(xqi, D);
-		if (Zero(D)) {
-			D.Lo = 1;
-		}
-		Mul128(D, Q, Y);
-		Sub(X, Y);
-		i++;
-	}
-	return Zero(X) || X.Lo == Q;
-}
-
-// Montgomery version
-bool tfm(uint128 k) {
-	uint128 sq, q, r;
-
-	Mul128(k, P, q);
-	Lsh(q);
-	Inc(q);
-
-	return Exp2Equals1_Mont(P, q);
-}
 
 // 256-bit version
 bool tf(uint128 k) {
@@ -839,7 +835,7 @@ void pretf(uint128 k) {
 		PreSq = sq;
 	}
 }
-
+*/
 void main() {
 	uint I = gl_GlobalInvocationID.x;
 
@@ -917,12 +913,12 @@ void main() {
 		uint128 k;
 		k.Lo = K[0];
 		k.Hi = K[1];
-		if (I == 0) {
-			uint128 kt = k;
-			Inc(kt);  // incase of 0.
-			pretf(kt);
-			//return;
-		}
+		//if (I == 0) {
+		//	uint128 kt = k;
+		//	Inc(kt);  // incase of 0.
+		//	pretf(kt);
+		//	//return;
+		//}
 		const uint lim = MnLen - 0;
 		uint kmod[lim];
 		for (int j = 0; j < lim; j++) {

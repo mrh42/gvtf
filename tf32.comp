@@ -328,48 +328,6 @@ bool Mod0(uint96 X, uint Q) {
 	return Zero(X) || X == QQ;
 }
 
-// 192-bit Floating point version
-void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
-	uint192 X, Y;
-	uint96 D;
-
-	Mul192(A, A, X);
-	if (doshift) {
-		Lsh(X);
-	}
-
-	// it is faster to do this w/o testing, even if D might be zero and have no effect.
-	if (true) {
-		fto96(toF(X)*qinv, D);
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-
-		fto96(toF(X)*qinv, D);
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-	}
-	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
-
-	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
-	// Always guess D a little low, and refine our guess as we get closer.
-	// normally takes 2 passes.
-	//
-	//while (i < 5 && Cmp(X, Q) > 0) {
-	while (Cmp(X, Q) > 0) {
-		fto96(toF(X)*qinv, D);
-		if (Zero(D)) {
-			D.x[0] = 1;
-		}
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-		i++;
-	}
-	if (i > 1) {
-		//atomicAdd(Debug[0], 1);
-	}
-	A = X.L;
-}
-
 void to96(uint64_t n, inout uint96 o) {
 	uint p0 = uint(n);      // lower 32-bits
 	uint p1 = uint(n>>32);  // upper 32-bits
@@ -612,7 +570,49 @@ bool tfm(uint96 k) {
 	return Eq96(A, oneBar);
 }
 
+/*
 
+// 192-bit Floating point version
+void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
+	uint192 X, Y;
+	uint96 D;
+
+	Mul192(A, A, X);
+	if (doshift) {
+		Lsh(X);
+	}
+
+	// it is faster to do this w/o testing, even if D might be zero and have no effect.
+	if (true) {
+		fto96(toF(X)*qinv, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+
+		fto96(toF(X)*qinv, D);
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+	}
+	int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
+
+	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
+	// Always guess D a little low, and refine our guess as we get closer.
+	// normally takes 2 passes.
+	//
+	//while (i < 5 && Cmp(X, Q) > 0) {
+	while (Cmp(X, Q) > 0) {
+		fto96(toF(X)*qinv, D);
+		if (Zero(D)) {
+			D.x[0] = 1;
+		}
+		Mul192(D, Q, Y);
+		Sub(X, Y);
+		i++;
+	}
+	if (i > 1) {
+		//atomicAdd(Debug[0], 1);
+	}
+	A = X.L;
+}
 bool tf(uint96 k) {
 	uint96 sq, q, pp;
 	uint192 t;
@@ -680,7 +680,7 @@ void pretf(uint96 k) {
 		PreSq = sq;
 	}
 }
-
+*/
 
 void main() {
 	//uint I = gl_GlobalInvocationID.x;
@@ -755,13 +755,14 @@ void main() {
 
  	// perform the second sieve, populating list2
 	if (Init == 2) {
+		/*
 		uint I = gl_GlobalInvocationID.x;
 		if (I == 0) {
 			uint96 kt = kbase;
 			Inc(kt);  // incase of 0.
 			pretf(kt);
 			//return;
-		}
+			}*/
 		const uint lim = MnLen - 0;
 		uint kmod[lim];
 		for (int j = 0; j < lim; j++) {
