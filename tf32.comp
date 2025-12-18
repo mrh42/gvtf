@@ -338,6 +338,66 @@ void to96(uint64_t n, inout uint96 o) {
 
 // -------------------- Montgomery (b = 2^32) for uint96 modulus --------------------
 
+// -------- 96-bit subtract: (top:A) -= B, where top is the extra carry limb (0 or 1) --------
+void Sub96Wide(inout uint96 A, inout uint top, uint96 B) {
+    uint64_t a0 = uint64_t(A.x[0]), a1 = uint64_t(A.x[1]), a2 = uint64_t(A.x[2]);
+    uint64_t b0 = uint64_t(B.x[0]), b1 = uint64_t(B.x[1]), b2 = uint64_t(B.x[2]);
+
+    uint64_t r0 = a0 - b0;
+    uint64_t borrow = (a0 < b0) ? 1ul : 0ul;
+
+    uint64_t t = b1 + borrow;
+    uint64_t r1 = a1 - t;
+    borrow = (a1 < t) ? 1ul : 0ul;
+
+    t = b2 + borrow;
+    uint64_t r2 = a2 - t;
+    borrow = (a2 < t) ? 1ul : 0ul;
+
+    top -= uint(borrow);          // top is 0/1; if borrow==1, we borrow from the 2^96 limb
+    A.x = uvec3(uint(r0), uint(r1), uint(r2));
+}
+
+// -------- a = (2*a) mod N, with full carry handling (works for any reduced a < N) --------
+void ModDouble96(inout uint96 A, uint96 N) {
+    uint64_t acc;
+
+    acc = (uint64_t(A.x[0]) << 1);
+    A.x[0] = uint(acc);
+    uint64_t carry = acc >> 32;
+
+    acc = (uint64_t(A.x[1]) << 1) + carry;
+    A.x[1] = uint(acc);
+    carry = acc >> 32;
+
+    acc = (uint64_t(A.x[2]) << 1) + carry;
+    A.x[2] = uint(acc);
+    carry = acc >> 32;
+
+    uint top = uint(carry); // 0 or 1 (the 2^96 limb)
+
+    // since A < N, 2A < 2N, so at most one subtract is needed
+    if (top != 0u || Cmp(A, N) >= 0) {
+        Sub96Wide(A, top, N); // top should become 0 after this
+    }
+
+    // (optional safety)
+    if (Cmp(A, N) >= 0) {
+        uint z = 0u;
+        Sub96Wide(A, z, N);
+    }
+}
+
+// -------- Montgomery representation of 1: oneBar = R mod Q, where R = 2^96 --------
+void MontOne96_Int(uint96 Q, out uint96 oneBar) {
+    oneBar.x = uvec3(1u, 0u, 0u);       // start at 2^0 mod Q
+    for (int i = 0; i < 96; i++) {
+        ModDouble96(oneBar, Q);         // now oneBar = 2^(i+1) mod Q
+    }
+    // after 96 doublings: oneBar = 2^96 mod Q
+}
+
+
 // 32-bit inverse mod 2^32 (Newton iteration), for odd a
 uint InvMod2_32(uint a) {
     // Returns a^{-1} mod 2^32 (a must be odd)
@@ -548,6 +608,7 @@ bool tfm(uint96 k) {
 
 	uint96 oneBar;
 	MontOne96(Q, qinv, oneBar);
+	//MontOne96_Int(Q, oneBar);
 
 	uint n0prime = MontN0Prime(Q);
 
