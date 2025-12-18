@@ -1,6 +1,6 @@
 # gvtf
 A simple vulkan compute shader TF implementation for mersenne primes.  This isn't meant
-for production, mostly to explore what can be done and how well in a computer shader.
+for production, mostly to explore what can be done and how well in a compute shader.
 
 ## math
 tf32.comp is a version of the shader using 32-bit unsigned ints to implement 96/192-bit extended math.
