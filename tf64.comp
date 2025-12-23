@@ -530,7 +530,7 @@ void MontDouble(inout uint128 A, uint128 N) {
     if (Cmp(A, N) >= 0) { Sub(A, N); }
 }
 
-// ---------- (Optional) reuse your float-based reducer ONLY to get R mod N ----------
+
 void ReduceMod256(inout uint256 X, uint128 Q, double qinv) {
     uint256 Y;
     uint128 D;
@@ -560,7 +560,7 @@ void MontOne(uint128 Q, double qinv, out uint128 oneBar) {
     oneBar = X.L;
 }
 
-// ---------- Your requested Exp(2, P, Q) test using Montgomery ----------
+
 bool Exp2Equals1_Mont(uint64_t P, uint128 Q) {
     // qinv only used to compute R mod Q once; inner loop is pure Montgomery.
     double qinv = 0.99999999999999 / toF(Q);
