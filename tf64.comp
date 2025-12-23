@@ -561,32 +561,6 @@ void MontOne(uint128 Q, double qinv, out uint128 oneBar) {
 }
 
 
-bool Exp2Equals1_Mont(uint64_t P, uint128 Q) {
-    // qinv only used to compute R mod Q once; inner loop is pure Montgomery.
-    double qinv = 0.99999999999999 / toF(Q);
-
-    uint128 oneBar;
-    MontOne(Q, qinv, oneBar);
-
-    uint64_t n0prime = MontN0Prime(Q);
-
-    uint128 A = oneBar; // starts at 1 in Montgomery form
-
-    int top = int(findMSB(P));
-    uint64_t one = uint64_t(1);
-
-    for (int b = top; b >= 0; b--) {
-        MontSquare(A, Q, n0prime);
-        if ((P & (one << b)) != 0) {
-            MontDouble(A, Q); // multiply-by-2 step
-        }
-    }
-
-    // 2^P mod Q == 1  <=>  A == 1 (in Montgomery) <=> A == oneBar
-    return (A.Lo == oneBar.Lo) && (A.Hi == oneBar.Hi);
-}
-
-
 uint Mod(uint128 X, uint Q) {
 	if (X.Hi == 0) {
 		return uint(X.Lo % Q);
@@ -632,13 +606,32 @@ bool Mod0(uint128 X, uint64_t Q) {
 
 // Montgomery version
 bool tfm(uint128 k) {
-	uint128 sq, q, r;
+	uint128 sq, Q, r;
 
-	Mul128(k, P, q);
-	Lsh(q);
-	Inc(q);
+	Mul128(k, P, Q);
+	Lsh(Q);
+	Inc(Q);
+	double qinv = 0.99999999999999 / toF(Q);
 
-	return Exp2Equals1_Mont(P, q);
+	uint128 oneBar;
+	MontOne(Q, qinv, oneBar);
+
+	uint64_t n0prime = MontN0Prime(Q);
+
+	uint128 A = oneBar; // starts at 1 in Montgomery form
+
+	int top = int(findMSB(P));
+	uint64_t one = uint64_t(1);
+
+	for (int b = top; b >= 0; b--) {
+		MontSquare(A, Q, n0prime);
+		if ((P & (one << b)) != 0) {
+			MontDouble(A, Q); // multiply-by-2 step
+		}
+	}
+
+	// 2^P mod Q == 1  <=>  A == 1 (in Montgomery) <=> A == oneBar
+	return (A.Lo == oneBar.Lo) && (A.Hi == oneBar.Hi);
 }
 
 
