@@ -2,7 +2,9 @@
 
 // Test for (3,5)mod8, and (0)mod(primes 3 -> 23) in one shot. From 446,185,740 potential K-values,
 // a list of 72,990,720 are left to TF test on the GPU. List is an array of 32-bit uints, using
-// about 278MB.  Each thread takes an offset from the list, adds it to the 96-bit base-K, then
+// about 278MB.
+// A second sieve takes the list down to about 4.1 million K to test. (List2)
+// Each thread takes an offset from the list, adds it to the 96-bit base-K, then
 // computes P * K * 2 + 1, which is then TF tested.
 // When the entire list has been tested, K-base += M.
 //
@@ -29,7 +31,7 @@ struct Stuff {
 };
 //
 // This is allocated in DEVICE_LOCAL memory, and is not shared with host.
-// This is much to access faster from the shader, especially if the GPU is in a PCIx1 slot.
+// This is much faster to access from the shader, especially if the GPU is in a PCIx1 slot.
 // These fields don't need to match the shader directly, the struct just needs to be big enough
 // to allocate enough memory on the GPU for what the shader needs.
 //
