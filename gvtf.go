@@ -362,7 +362,7 @@ func (out *Result) doLog() {
 	out.Status = st
 	out.Bitlo = int64(math.Round(bitlo))
 	out.Bithi = int64(math.Floor(bithi))
-	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.4"}
+	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.5"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
 
