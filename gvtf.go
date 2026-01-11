@@ -23,18 +23,16 @@ import "C"
 //
 // remove composite factors from the list.  return a list of factors as strings.
 //
-func removecomp(P *big.Int, factors []*big.Int) []string {
+func removecomp(factors []*big.Int) []string {
 	out := make([]string, 0, len(factors))
 
-	//Two := big.NewInt(2)
 	Z := big.NewInt(0)
 	for i, f := range factors {
-		//x := new(big.Int).Exp(Two, P, f)
-		//fmt.Printf("mod: %d\n", x)
 
 		if ! f.ProbablyPrime(10) {
 			fmt.Fprintf(os.Stdout, "# %d is composite\n", f)
 		}
+		// don't report factors that have factors we're already reporting
 		comp := false
 		for j := 0; j < i; j++ {
 			g := factors[j]
@@ -147,7 +145,7 @@ func initInput(P uint64) int {
 	C.runCommandBuffer()
 	fmt.Printf("# GPU threads used for init: %d\n", p.Debug[2])
 
-	p.Init = 5;  // copy back atomic counters, to check it went correctly
+	p.Init = 5;  // copy back atomic counters, to check if it went correctly
 	C.runCommandBuffer()
 
 	if p.Debug[0] != C.ListLen {
@@ -179,6 +177,7 @@ func big2(u0, u1 C.uint64_t) *big.Int {
 	return f
 }
 
+// Estimate the number of Ghz-Days required for a range of factors
 func estGhzDays(K *big.Int) (ghzdays float64) {
 	ghzdays, _ = K.Float64()
 	ghzdays /= 2465155716822.9
@@ -193,8 +192,7 @@ func timeremaining(K, K2, LastK *big.Int, e time.Duration) (time.Duration, float
 	ghzdays := estGhzDays(L)
 
 	E := big.NewInt(int64(e.Seconds()))
-	R := new(big.Int)
-	R.Sub(K, LastK)
+	R := new(big.Int).Sub(K, LastK)
 	R.Div(R, E)
 
 	L.Div(L, R)
@@ -331,7 +329,7 @@ func (result *Result) checkSieve(K *big.Int, p *C.struct_Stuff) {
 
 
 //
-// this was verified by James to product output accepted by mersenne.ca
+// this was verified by James to produce output accepted by mersenne.ca
 //
 func (out *Result) doLog() {
 	p := out.Exponent
@@ -359,7 +357,7 @@ func (out *Result) doLog() {
 		F.Add(F, One)
 		factors = append(factors, F)
 	}
-	sfactors := removecomp(P, factors)
+	sfactors := removecomp(factors)
 
 	if len(sfactors) > 0 {
 		out.Factors = sfactors
