@@ -23,11 +23,15 @@ import "C"
 //
 // remove composite factors from the list.  return a list of factors as strings.
 //
-func removecomp(factors []*big.Int) []string {
+func removecomp(P *big.Int, factors []*big.Int) []string {
 	out := make([]string, 0, len(factors))
 
+	//Two := big.NewInt(2)
 	Z := big.NewInt(0)
 	for i, f := range factors {
+		//x := new(big.Int).Exp(Two, P, f)
+		//fmt.Printf("mod: %d\n", x)
+
 		if ! f.ProbablyPrime(10) {
 			fmt.Fprintf(os.Stdout, "# %d is composite\n", f)
 		}
@@ -326,7 +330,9 @@ func (result *Result) checkSieve(K *big.Int, p *C.struct_Stuff) {
 }
 
 
-//func doLog(p uint64, K1, K2 *big.Int, kfactors []*big.Int, complete bool) {
+//
+// this was verified by James to product output accepted by mersenne.ca
+//
 func (out *Result) doLog() {
 	p := out.Exponent
 	bitlo := ktobit(p, out.Begink)
@@ -353,7 +359,7 @@ func (out *Result) doLog() {
 		F.Add(F, One)
 		factors = append(factors, F)
 	}
-	sfactors := removecomp(factors)
+	sfactors := removecomp(P, factors)
 
 	if len(sfactors) > 0 {
 		out.Factors = sfactors
@@ -507,7 +513,10 @@ func main() {
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Uint("bithi", 68, "bit limit to test to")
 	B1 := flag.Uint("bitlo", 0, "bit limit to test from")
-	version := flag.Int("version", 64, "version of GPU code to use, 32 or 64")
+
+	// the 32-bit version can handle factors under 96-bits.
+	// It is generally faster than the 64-bit version, which can handle factors under 128-bits.
+	version := flag.Int("version", 32, "version of GPU code to use, 32 or 64")
 
 	flag.StringVar(&username, "username", u.Username, "username")
 	flag.StringVar(&host, "host", host, "hostname")
