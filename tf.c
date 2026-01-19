@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include "tf.h"
 #include "spv32.h"
+#include "spv32s.h"
 #include "spv64.h"
 
 VkInstance instance;
@@ -570,6 +571,9 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	if (version == 32) {
 		codesize = sizeof(spv32);
 		code = spv32;
+	} else if (version == 31) {
+		codesize = sizeof(spv32s);
+		code = spv32s;
 	} else if (version == 64) {
 		codesize = sizeof(spv64);
 		code = spv64;
