@@ -88,8 +88,8 @@ struct uint192 {
 layout(binding = 1) buffer buf2
 {
 	uint    xL, xL2, xLl;
-	int        PreTop;
-	uint96     PreSq;
+	//int        PreTop;
+	//uint96     PreSq;
 	uint       List[ListN];
 	uint       List2[ListN];
 	uint    Xx[MnLen][1+Mn[6]/32];

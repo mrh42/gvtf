@@ -86,8 +86,8 @@ layout(binding = 1) buffer buf2
 	uint    xL, xL2, xLl;
 	uint       List[ListN];
 	uint       List2[ListN];
-	int        PreTop;
-	uint128    PreSq;
+	//int        PreTop;
+	//uint128    PreSq;
 	uint    Xx[MnLen][1+Mn[6]/32];
 };
 

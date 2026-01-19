@@ -208,15 +208,17 @@ func (result *Result) tfRun() {
 
 	//K1 = C.M * (K1/C.M);
 	M := big.NewInt(C.M)
-	K := new(big.Int)
-	K.Set(K1)
+	K := new(big.Int).Set(K1)
+
 	if K.Cmp(result.krestart) < 0 {
 		K.Set(result.krestart)
 	}
 
+	// start on a M boundry
 	K.Div(K, M)
 	K.Mul(K, M)
 
+	// fill in the 128-bit starting K value
 	p.K[0] = C.uint64_t(u64n(K, 0))
 	p.K[1] = C.uint64_t(u64n(K, 1))
 
@@ -304,6 +306,10 @@ func (result *Result) tfRun() {
 			// sanity check that only composites were tossed.
 			result.checkSieve(K, p)
 		}
+		//p.Init = 5;  // copy L2 back, for sanity checking
+		//C.runCommandBuffer()
+		//fmt.Printf("# L2: %d/%d Ll: %d, e: %s\n", p.Debug[1], M, p.Debug[0])
+
 	}
 
 	C.mrhUnMap()
@@ -366,7 +372,7 @@ func (out *Result) doLog() {
 	out.Status = st
 	out.Bitlo = int64(math.Round(bitlo))
 	out.Bithi = int64(math.Floor(bithi))
-	out.Program = map[string]string{"name": "vulkan-tf", "version":"0.5"}
+	out.Program = map[string]string{"name": "gvtf", "version":"0.6"}
 	o, _ := json.Marshal(out)
 	fmt.Println(string(o))
 
