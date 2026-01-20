@@ -385,6 +385,7 @@ void Mul256(uint128 A, uint128 B, inout uint256 X) {
 	}
 }
 
+#ifdef USE_DOUBLE
 // 2^64, 2^128 and 2^192
 const 	double p64 =  18446744073709551616.0lf;
 const	double p128 = 340282366920938463463374607431768211456.0lf;
@@ -405,6 +406,7 @@ void fto128(double f, out uint128 A) {
 	A.Hi = uint64_t(f / p64);
 	A.Lo = uint64_t(f - double(A.Hi) * p64);
 }
+#endif
 
 
 // ---------- 64-bit inverse mod 2^64 (Newton iteration), for odd a ----------
@@ -530,6 +532,7 @@ void MontDouble(inout uint128 A, uint128 N) {
     if (Cmp(A, N) >= 0) { Sub(A, N); }
 }
 
+#ifdef USE_DOUBLE
 
 void ReduceMod256(inout uint256 X, uint128 Q, double qinv) {
     uint256 Y;
@@ -550,7 +553,6 @@ void ReduceMod256(inout uint256 X, uint128 Q, double qinv) {
         Sub(X, Y);
     }
 }
-
 // oneBar = R mod Q, where R = 2^128 (Montgomery representation of 1)
 void MontOne(uint128 Q, double qinv, out uint128 oneBar) {
     uint256 X;
@@ -560,49 +562,66 @@ void MontOne(uint128 Q, double qinv, out uint128 oneBar) {
     oneBar = X.L;
 }
 
+#endif
 
-uint Mod(uint128 X, uint Q) {
-	if (X.Hi == 0) {
-		return uint(X.Lo % Q);
-	}
-	uint128 Y, D;
-	int i = 0;
-	double qinv = 0.9999999999999 / double(Q);
-	while (i < 10 && Cmp(X, Q) > 0) {
-		double x = toF(X);
-		double xqi = x * qinv;
-		fto128(xqi, D);
-		if (Zero(D)) {
-			D.Lo = 1;
-		}
-		Mul128(D, Q, Y);
-		Sub(X, Y);
-		i++;
-	}
-	if (X.Lo == Q) return 0;
-	return uint(X.Lo);
+void Sub128Wide(inout uint128 A, inout uint top, uint128 N)
+{
+    // subtract low 64
+    uint64_t aLo = A.Lo;
+    uint64_t lo  = aLo - N.Lo;
+    uint64_t b0  = (aLo < N.Lo) ? 1ul : 0ul;
+
+    // subtract high 64 with borrow
+    uint64_t aHi = A.Hi;
+    uint64_t nHi_b0 = N.Hi + b0;                 // safe: b0 is 0/1
+    uint64_t hi  = aHi - nHi_b0;
+    uint64_t b1  = (aHi < nHi_b0) ? 1ul : 0ul;   // borrow out of 128-bit word
+
+    A.Lo = lo;
+    A.Hi = hi;
+
+    // subtract final borrow from top (top is 0 or 1)
+    top -= uint(b1);
+}
+void ModDouble128(inout uint128 A, uint128 N)
+{
+    // Double A: A = A << 1, capture carry-out as top (bit 128)
+    uint64_t lo = A.Lo;
+    uint64_t hi = A.Hi;
+
+    uint64_t newLo = lo << 1;
+    uint64_t carry0 = lo >> 63;        // 0 or 1 into Hi
+    uint64_t newHi = (hi << 1) | carry0;
+    uint64_t carry1 = hi >> 63;        // 0 or 1 into top (bit 128)
+
+    A.Lo = newLo;
+    A.Hi = newHi;
+
+    uint top = uint(carry1);           // 0 or 1
+
+    // Since A < N, 2A < 2N, so at most one subtract is needed.
+    if (top != 0u || Cmp(A, N) >= 0) {
+        Sub128Wide(A, top, N);
+    }
+
+    // Optional safety (mirrors your 96-bit version)
+    if (Cmp(A, N) >= 0) {
+        uint z = 0u;
+        Sub128Wide(A, z, N);
+    }
 }
 
-bool Mod0(uint128 X, uint64_t Q) {
-	if (X.Hi == 0) {
-		return (X.Lo % Q) == 0;
+// -------- Montgomery representation of 1: oneBar = R mod Q, where R = 2^96 --------
+void MontOne_Int(uint128 Q, out uint128 oneBar) {
+	oneBar.Lo = 1;
+	oneBar.Hi = 0;
+	if (Q.Hi == 0ul && Q.Lo == 1ul) { oneBar.Hi = 0ul; return; }
+	for (int i = 0; i < 128; i++) {
+		ModDouble128(oneBar, Q);         // now oneBar = 2^(i+1) mod Q
 	}
-	uint128 Y, D;
-	int i = 0;
-	double qinv = 0.9999999999999 / double(Q);
-	while (i < 10 && Cmp(X, Q) > 0) {
-		double x = toF(X);
-		double xqi = x * qinv;
-		fto128(xqi, D);
-		if (Zero(D)) {
-			D.Lo = 1;
-		}
-		Mul128(D, Q, Y);
-		Sub(X, Y);
-		i++;
-	}
-	return Zero(X) || X.Lo == Q;
+	// after 128 doublings: oneBar = 2^128 mod Q
 }
+
 
 // Montgomery version
 bool tfm(uint128 k) {
@@ -611,11 +630,14 @@ bool tfm(uint128 k) {
 	Mul128(k, P, Q);
 	Lsh(Q);
 	Inc(Q);
-	double qinv = 0.99999999999999 / toF(Q);
 
 	uint128 oneBar;
+#ifdef USE_DOUBLE
+	double qinv = 0.99999999999999 / toF(Q);
 	MontOne(Q, qinv, oneBar);
-
+#else
+	MontOne_Int(Q, oneBar);
+#endif
 	uint64_t n0prime = MontN0Prime(Q);
 
 	uint128 A = oneBar; // starts at 1 in Montgomery form
@@ -634,201 +656,36 @@ bool tfm(uint128 k) {
 	return (A.Lo == oneBar.Lo) && (A.Hi == oneBar.Hi);
 }
 
+uint Mod(uint128 X, uint Q) {
+    // Fast path: fits in 64 bits
+    if (X.Hi == 0ul) {
+        return uint(X.Lo % uint64_t(Q));
+    }
 
-/*
+    uint64_t q = uint64_t(Q);
 
-// 256-bit Floating point version
-void SqMod(inout uint128 A, uint128 Q, bool doshift, double qinv) {
-	uint256 X, Y;
-	uint128 D;
+    // B = 2^32 mod Q
+    uint64_t B = (uint64_t(1) << 32) % q;
 
-	Sq256(A, X);
-	if (doshift) {
-		Lsh(X);
-	}
+    // Split into 4x 32-bit limbs, most-significant first
+    uint64_t x3 = uint64_t(uint(X.Hi >> 32)); // top 32 bits
+    uint64_t x2 = uint64_t(uint(X.Hi));       // next 32
+    uint64_t x1 = uint64_t(uint(X.Lo >> 32)); // next 32
+    uint64_t x0 = uint64_t(uint(X.Lo));       // low 32
 
-	//if (X.H.Hi > 0) {atomicAdd(Debug[0], 1);}
+    // Fold: r = (((x3)*B + x2)*B + x1)*B + x0  (mod q)
+    uint64_t r = x3 % q;
+    r = (r * B + x2) % q;
+    r = (r * B + x1) % q;
+    r = (r * B + x0) % q;
 
-	// it is faster to do this w/o testing, even if D might be zero and have no effect.
-	if (true) {
-		double x = toF(X);
-		fto128(x*qinv, D);
-		Mul256(D, Q, Y);
-		Sub(X, Y);
-
-		x = toF(X);
-		fto128(x*qinv, D);
-		Mul256(D, Q, Y);
-		Sub(X, Y);
-	}
-	//int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
-
-	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
-	// Always guess D a little low, and refine our guess as we get closer.
-	// normally takes 2 passes.
-	//while (i < 10 && Cmp(X, Q) > 0) {
-	while (Cmp(X, Q) > 0) {
-
-		double x = toF(X);
-		fto128(x*qinv, D);
-		if (Zero(D)) {
-			D.Lo = 1;
-		}		
-		Mul256(D, Q, Y);
-
-		Sub(X, Y);
-		//i++;
-	}
-	//if (i > 3) {Debug[1]++;}
-	A = X.L;
-}
-// 192-bit Floating point version
-void SqMod9(inout uint128 A, uint128 Q, bool doshift, double qinv) {
-	uint192 X, Y;
-	uint128 D;
-
-	Sq192(A, X);
-	//Mul192(A, A, X);
-	if (doshift) {
-		Lsh(X);
-	}
-	// it is faster to do this w/o testing, even if D might be zero and have no effect.
-	if (true) {
-		double x = toF(X);
-		fto128(x*qinv, D);
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-
-		x = toF(X);
-		fto128(x*qinv, D);
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-	}
-
-	//int i = 0; // limit to 10, in case we have a bug, don't want to get stuck...
-
-	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
-	// Always guess D a little low, and refine our guess as we get closer.
-	// normally takes 2 passes.
-	//
-	//while (i < 10 && Cmp(X, Q) > 0) {
-	while (Cmp(X, Q) > 0) {
-		double x = toF(X);
-		fto128(x*qinv, D);
-		if (Zero(D)) {
-			D.Lo = 1;
-		}
-		Mul192(D, Q, Y);
-		Sub(X, Y);
-		//i++;
-	}
-	//if (gl_GlobalInvocationID.x == 0 && i > 5) {Debug[1]++;}
-	A = X.L;
+    return uint(r);
 }
 
-
-// 256-bit version
-bool tf(uint128 k) {
-	uint128 sq, q;
-
-	int top = int(findMSB(P));
-
-	// q = 2 * p * k + 1
-	//pp.Lo = P;
-	//pp.Hi = 0;
-	Mul128(k, P, q);
-	Lsh(q);
-	Inc(q);
-
-        // Make our 1/q just a tiny bit too small, so we don't over estimate,
-        // but not so small as to need extra passes.
-	double qinv = 0.99999999999999 / toF(q);
-
-	// Do the TF math: Starting with 1, repeatedly square,
-	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
-	//  then compute mod Q.
-	uint64_t one = 1L;
-	sq.Lo = 1; sq.Hi = 0;
-	sq = PreSq;
-	for (int b = PreTop; b >= 0; b--) {
-		bool bb = (P & (one << b)) != 0;
-		SqMod(sq, q, bb, qinv);
-	}
-	// If the result is 1, then we found a factor.
-	return sq.Lo == 1 && sq.Hi == 0;
+bool Mod0(uint128 X, uint Q) {
+	return Mod(X, Q) == 0;
 }
 
-// 192-bit version
-bool tf9(uint128 k) {
-	uint128 sq, q;
-
-	int top = int(findMSB(P));
-
-	// q = 2 * p * k + 1
-	//pp.Lo = P;
-	//pp.Hi = 0;
-	Mul128(k, P, q);
-	Lsh(q);
-	Inc(q);
-
-        // Make our 1/q just a tiny bit too small, so we don't over estimate,
-        // but not so small as to need extra passes.
-	double qinv = 0.99999999999999 / toF(q);
-
-	// Do the TF math: Starting with 1, repeatedly square,
-	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
-	//  then compute mod Q.
-	uint64_t one = 1L;
-	sq.Lo = 1; sq.Hi = 0;
-	sq = PreSq;
-	for (int b = PreTop; b >= 0; b--) {
-		bool bb = (P & (one << b)) != 0;
-		SqMod9(sq, q, bb, qinv);
-	}
-	// If the result is 1, then we found a factor.
-	return sq.Lo == 1 && sq.Hi == 0;
-}
-
-//
-// The squaring rounds are all the same, until Sq>Q.  So we can pre-compute those.
-//
-void pretf(uint128 k) {
-	uint128 sq, q;
-
-	int top = int(findMSB(P));
-
-	// q = 2 * p * k + 1
-	//pp.Lo = P;
-	//pp.Hi = 0;
-	Mul128(k, P, q);
-	Lsh(q);
-	Inc(q);
-
-        // Make our 1/q just a tiny bit too small, so we don't over estimate,
-        // but not so small as to need extra passes.
-	double qinv = 0.99999999999999 / toF(q);
-
-	uint256 X;
-	// Do the TF math: Starting with 1, repeatedly square,
-	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
-	//  then compute mod Q.
-	uint64_t one = 1L;
-	sq.Lo = 1; sq.Hi = 0;
-	for (int b = top; b >= 0; b--) {
-		bool bb = (P & (one << b)) != 0;
-		Sq256(sq, X);
-		if (bb) {
-			Lsh(X);
-		}
-		if (Cmp(X, q) > 0) {
-			break;
-		}
-		sq = X.L;
-		PreTop = b-1;
-		PreSq = sq;
-	}
-}
-*/
 void main() {
 	uint I = gl_GlobalInvocationID.x;
 
