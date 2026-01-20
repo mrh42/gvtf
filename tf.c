@@ -7,7 +7,6 @@
 #include <sys/time.h>
 #include "tf.h"
 #include "spv32.h"
-#include "spv32s.h"
 #include "spv64.h"
 
 VkInstance instance;
@@ -50,14 +49,28 @@ int createInstance() {
         applicationInfo.engineVersion = 0;
         applicationInfo.apiVersion = VK_API_VERSION_1_3;
         
-        VkInstanceCreateInfo createInfo = {};
+        // Enable portability enumeration on macOS/MoltenVK.
+	const char* instanceExts[] = {
+		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+		// If you create a surface later, you will ALSO need:
+		// VK_KHR_SURFACE_EXTENSION_NAME,
+		// VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+	};
+
+	VkInstanceCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.flags = 0;
-        createInfo.pApplicationInfo = &applicationInfo;
+	createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	createInfo.pApplicationInfo = &applicationInfo;
         
         // Give our desired layers and extensions to vulkan.
         createInfo.enabledLayerCount = 0;
-        //createInfo.ppEnabledLayerNames = enabledLayers.data();
+
+	createInfo.enabledExtensionCount = (uint32_t)(sizeof(instanceExts) / sizeof(instanceExts[0]));
+	createInfo.ppEnabledExtensionNames = instanceExts;
+
+
+	//createInfo.ppEnabledLayerNames = enabledLayers.data();
         //createInfo.enabledExtensionCount = enabledExtensions.size();
         //createInfo.ppEnabledExtensionNames = enabledExtensions.data();
     
@@ -571,9 +584,6 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 	if (version == 32) {
 		codesize = sizeof(spv32);
 		code = spv32;
-	} else if (version == 31) {
-		codesize = sizeof(spv32s);
-		code = spv32s;
 	} else if (version == 64) {
 		codesize = sizeof(spv64);
 		code = spv64;

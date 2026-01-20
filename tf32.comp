@@ -137,12 +137,8 @@ int Cmp(uint96 A, uint96 B) {
 int Cmp(uint192 A, uint96 B) {
 	if (Zero(A.H)) {
 		return Cmp(A.L, B);
-	} else {
-		if (Zero(B)) {
-			return 0;
-		}
-		return 1;
 	}
+ 	return 1;
 }
 int Cmp(uint192 A, uint192 B) {
 	int c = Cmp(A.H, B.H);
@@ -212,7 +208,7 @@ void Sub(inout uint96 A, uint96 B) {
 	A.x[2] = usubBorrow(A.x[2], B.x[2], c1);
 }
 
-
+#ifdef USE_DOUBLE
 // 2^64, 2^128 and 2^192
 const   double p32 =  4294967296.0lf;
 const 	double p64 =  18446744073709551616.0lf;
@@ -240,6 +236,7 @@ void fto96(double f, out uint96 A) {
 	A.x[1] = y;
 	A.x[0] = uint(f - (x * p64 + y * p32));
 }
+#endif
 
 void Mul192(inout uint96 A, uint96 B, out uint192 R)
 {
@@ -278,54 +275,27 @@ void Mul192(inout uint96 A, uint96 B, out uint192 R)
 	R.H.x[2] = uaddCarry(h[8], c, c1);
 }
 
-uint Mod(uint96 X, uint Q) {
-	if (X.x[2] == 0) {
-		uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
-		return uint(x64 % Q);
-	}
-	//atomicAdd(Debug[0], 1);
-	uint96 D, QQ;
-	uint192 Y;
-	int i = 0;
-	double qinv = 0.9999999999999 / double(Q);
-	QQ.x = uvec3(Q, 0, 0);
-	while (i < 10 && Cmp(X, Q) > 0) {
-		double x = toF(X);
-		double xqi = x * qinv;
-		fto96(xqi, D);
-		if (Zero(D)) {
-			D.x[0] = 1;
-		}
-		Mul192(D, QQ, Y);
-		Sub(X, Y.L);
-		i++;
-	}
-	if (X.x[0] == Q) return 0;
-	return X.x[0];
-}
-bool Mod0(uint96 X, uint Q) {
-	if (X.x[2] == 0) {
-		uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
-		return (x64 % Q) == 0;
-	}
-	uint96 D, QQ;
-	uint192 Y;
-	int i = 0;
-	double qinv = 0.9999999999999 / double(Q);
-	QQ.x = uvec3(Q, 0, 0);
-	while (i < 10 && Cmp(X, Q) > 0) {
-		double x = toF(X);
-		double xqi = x * qinv;
-		fto96(xqi, D);
-		if (Zero(D)) {
-			D.x[0] = 1;
-		}
+uint Mod(uint96 X, uint Q)
+{
+    // Fast path: already fits in 64 bits.
+    if (X.x[2] == 0u) {
+	    uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
+	    return uint(x64 % Q);
+    }
 
-		Mul192(D, QQ, Y);
-		Sub(X, Y.L);
-		i++;
-	}
-	return Zero(X) || X == QQ;
+    // Compute (2^32 mod Q) in 64-bit, then fold limbs top->bottom.
+    uint64_t q  = Q;
+    uint64_t B  = (uint64_t(1u) << 32) % q;  // B = 2^32 mod Q
+
+    uint64_t r = X.x[2] % Q;     // start with top limb (mod Q)
+    r = (r * B + X.x[1]) % q;
+    r = (r * B + X.x[0]) % q;
+
+    return uint(r);
+}
+bool Mod0(uint96 X, uint Q)
+{
+	return Mod(X, Q) == 0;
 }
 
 void to96(uint64_t n, inout uint96 o) {
@@ -386,15 +356,6 @@ void ModDouble96(inout uint96 A, uint96 N) {
         uint z = 0u;
         Sub96Wide(A, z, N);
     }
-}
-
-// -------- Montgomery representation of 1: oneBar = R mod Q, where R = 2^96 --------
-void MontOne96_Int(uint96 Q, out uint96 oneBar) {
-    oneBar.x = uvec3(1u, 0u, 0u);       // start at 2^0 mod Q
-    for (int i = 0; i < 96; i++) {
-        ModDouble96(oneBar, Q);         // now oneBar = 2^(i+1) mod Q
-    }
-    // after 96 doublings: oneBar = 2^96 mod Q
 }
 
 
@@ -560,6 +521,7 @@ void MontDouble96(inout uint96 A, uint96 N) {
     }
 }
 
+#ifdef USE_DOUBLE
 // --------- helper to compute R mod N once (R = 2^96) using your existing float reducer style ---------
 void ReduceMod192(inout uint192 X, uint96 Q, double qinv) {
     uint192 Y;
@@ -590,6 +552,16 @@ void MontOne96(uint96 Q, double qinv, out uint96 oneBar) {
     ReduceMod192(X, Q, qinv);
     oneBar = X.L;
 }
+#endif
+
+// -------- Montgomery representation of 1: oneBar = R mod Q, where R = 2^96 --------
+void MontOne96_Int(uint96 Q, out uint96 oneBar) {
+    oneBar.x = uvec3(1u, 0u, 0u);       // start at 2^0 mod Q
+    for (int i = 0; i < 96; i++) {
+        ModDouble96(oneBar, Q);         // now oneBar = 2^(i+1) mod Q
+    }
+    // after 96 doublings: oneBar = 2^96 mod Q
+}
 
 // --------- Exp base 2: returns true iff 2^P mod Q == 1 (i.e., Q divides M_P) ---------
 // Montgomery version
@@ -604,11 +576,13 @@ bool tfm(uint96 k) {
 	Q = t.L;  // q is limited to 96-bits
 	Lsh(Q);
 	Inc(Q);
-	double qinv = 0.9999999999999 / toF(Q);
 
 	uint96 oneBar;
-	MontOne96(Q, qinv, oneBar);
-	//MontOne96_Int(Q, oneBar);
+#ifdef USE_DOUBLE
+	MontOne96(Q, 0.9999999999999 / toF(Q), oneBar);
+#else
+	MontOne96_Int(Q, oneBar);
+#endif
 
 	uint n0prime = MontN0Prime(Q);
 

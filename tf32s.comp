@@ -137,12 +137,8 @@ int Cmp(uint96 A, uint96 B) {
 int Cmp(uint192 A, uint96 B) {
 	if (Zero(A.H)) {
 		return Cmp(A.L, B);
-	} else {
-		if (Zero(B)) {
-			return 0;
-		}
-		return 1;
 	}
+	return 1;
 }
 int Cmp(uint192 A, uint192 B) {
 	int c = Cmp(A.H, B.H);
@@ -215,14 +211,26 @@ void Sub(inout uint96 A, uint96 B) {
 
 // 2^64, 2^128 and 2^192
 const   double p32 =  4294967296.0lf;
+const   float pf32 =  4294967296.0f;
 const 	double p64 =  18446744073709551616.0lf;
+const 	float pf64 =  18446744073709551616.0f;
 const   double p96 =  79228162514264337593543950336.0lf;
+const   float pf96 =  79228162514264337593543950336.0f;
 const	double p128 = 340282366920938463463374607431768211456.0lf;
+const	float pf128 = 340282366920938463463374607431768211456.0f;
 const   double p160 = 1461501637330902918203684832716283019655932542976.0lf;
+const   float pf160 = 1461501637330902918203684832716283019655932542976.0f;
 //const	double p192 = 6277101735386680763835789423207666416102355444464034512896.0lf;
 
+float tof(uint96 A) {
+	return float(A.x[0]) + float(A.x[1]) * pf32 + float(A.x[2]) * pf64;
+}
 double toF(uint96 A) {
 	return double(A.x[0]) + double(A.x[1]) * p32 + double(A.x[2]) * p64;
+}
+float tof(uint192 A) {
+	return float(A.L.x[0]) + float(A.L.x[1]) * pf32 + float(A.L.x[2]) * pf64 +
+		float(A.H.x[0]) * pf96 + float(A.H.x[1]) * pf128 + float(A.H.x[2]) * pf160;
 }
 double toF(uint192 A) {
 	return double(A.L.x[0]) + double(A.L.x[1]) * p32 + double(A.L.x[2]) * p64 +
@@ -239,6 +247,13 @@ void fto96(double f, out uint96 A) {
 	uint y = uint((f - x * p64) / p32);
 	A.x[1] = y;
 	A.x[0] = uint(f - (x * p64 + y * p32));
+}
+void fto96f(float f, out uint96 A) {
+	uint x = uint(f / pf64);
+	A.x[2] = x;
+	uint y = uint((f - x * pf64) / pf32);
+	A.x[1] = y;
+	A.x[0] = uint(f - (x * pf64 + y * pf32));
 }
 
 void Mul192(inout uint96 A, uint96 B, out uint192 R)
@@ -346,13 +361,14 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 		Lsh(X);
 	}
 
+	//double qinv = double(qinvf);
 	// it is faster to do this w/o testing, even if D might be zero and have no effect.
-	if (true) {
-		fto96(toF(X)*qinv, D);
+	if (false) {
+		fto96(tof(X)*qinv, D);
 		Mul192(D, Q, Y);
 		Sub(X, Y);
 
-		fto96(toF(X)*qinv, D);
+		fto96(tof(X)*qinv, D);
 		Mul192(D, Q, Y);
 		Sub(X, Y);
 	}
@@ -362,8 +378,9 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	// Always guess D a little low, and refine our guess as we get closer.
 	// normally takes 2 passes.
 	//
-	//while (i < 5 && Cmp(X, Q) > 0) {
-	while (Cmp(X, Q) > 0) {
+	while (i < 400 && Cmp(X, Q) > 0) {
+        //while (Cmp(X, Q) > 0) {
+		//fto96f(tof(X)*qinv, D);
 		fto96(toF(X)*qinv, D);
 		if (Zero(D)) {
 			D.x[0] = 1;
@@ -372,8 +389,8 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 		Sub(X, Y);
 		i++;
 	}
-	if (i > 1) {
-		//atomicAdd(Debug[0], 1);
+	if (i > 399) {
+		atomicAdd(Debug[0], 1);
 	}
 	A = X.L;
 }
@@ -391,7 +408,10 @@ bool tf(uint96 k) {
 
         // Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
-	double qinv = 0.9999999999999 / toF(q);
+	//float qinv = 0.99999999999 / tof(q);
+	double qinv = 0.9999999999999lf / toF(q);
+	//double qinv = 1.0 / tof(q);
+	//float qinv = 1.0 / tof(q);
 		
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
