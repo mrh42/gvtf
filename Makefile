@@ -1,5 +1,3 @@
-
-
 gvtf: spv32.h spv64.h tf.c tf.h gvtf.go go.mod
 	go build
 
@@ -16,3 +14,6 @@ spv64.h: tf64.comp
 go.mod:
 	go mod init gvtf
 	go mod tidy
+
+clean:
+	rm spv64.h spv32.h gvtf
