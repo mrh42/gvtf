@@ -43,18 +43,17 @@ const int XSIZE = 64;
 int createInstance() {
         VkApplicationInfo applicationInfo = {};
         applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        applicationInfo.pApplicationName = "Hello world app";
+        applicationInfo.pApplicationName = "gvtf";
         applicationInfo.applicationVersion = 0;
-        applicationInfo.pEngineName = "awesomeengine";
+        applicationInfo.pEngineName = "gvtf";
         applicationInfo.engineVersion = 0;
         applicationInfo.apiVersion = VK_API_VERSION_1_3;
         
         // Enable portability enumeration on macOS/MoltenVK.
 	const char* instanceExts[] = {
+#ifdef __APPLE__
 		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
-		// If you create a surface later, you will ALSO need:
-		// VK_KHR_SURFACE_EXTENSION_NAME,
-		// VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+#endif
 	};
 
 	VkInstanceCreateInfo createInfo = {};
@@ -69,16 +68,7 @@ int createInstance() {
 	createInfo.enabledExtensionCount = (uint32_t)(sizeof(instanceExts) / sizeof(instanceExts[0]));
 	createInfo.ppEnabledExtensionNames = instanceExts;
 
-
-	//createInfo.ppEnabledLayerNames = enabledLayers.data();
-        //createInfo.enabledExtensionCount = enabledExtensions.size();
-        //createInfo.ppEnabledExtensionNames = enabledExtensions.data();
-    
-        /*
-        Actually create the instance.
-        Having created the instance, we can actually start using vulkan.
-        */
-        VkResult res = vkCreateInstance(&createInfo, NULL, &instance);
+	VkResult res = vkCreateInstance(&createInfo, NULL, &instance);
 	if (res != VK_SUCCESS) {
 		fprintf(stderr, "vkCreateInstance() = %d\n", res);
 		return -1;

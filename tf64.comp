@@ -562,7 +562,7 @@ void MontOne(uint128 Q, double qinv, out uint128 oneBar) {
     oneBar = X.L;
 }
 
-#endif
+#else
 
 void Sub128Wide(inout uint128 A, inout uint top, uint128 N)
 {
@@ -621,7 +621,7 @@ void MontOne_Int(uint128 Q, out uint128 oneBar) {
 	}
 	// after 128 doublings: oneBar = 2^128 mod Q
 }
-
+#endif
 
 // Montgomery version
 bool tfm(uint128 k) {

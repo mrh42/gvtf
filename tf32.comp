@@ -328,36 +328,6 @@ void Sub96Wide(inout uint96 A, inout uint top, uint96 B) {
     A.x = uvec3(uint(r0), uint(r1), uint(r2));
 }
 
-// -------- a = (2*a) mod N, with full carry handling (works for any reduced a < N) --------
-void ModDouble96(inout uint96 A, uint96 N) {
-    uint64_t acc;
-
-    acc = (uint64_t(A.x[0]) << 1);
-    A.x[0] = uint(acc);
-    uint64_t carry = acc >> 32;
-
-    acc = (uint64_t(A.x[1]) << 1) + carry;
-    A.x[1] = uint(acc);
-    carry = acc >> 32;
-
-    acc = (uint64_t(A.x[2]) << 1) + carry;
-    A.x[2] = uint(acc);
-    carry = acc >> 32;
-
-    uint top = uint(carry); // 0 or 1 (the 2^96 limb)
-
-    // since A < N, 2A < 2N, so at most one subtract is needed
-    if (top != 0u || Cmp(A, N) >= 0) {
-        Sub96Wide(A, top, N); // top should become 0 after this
-    }
-
-    // (optional safety)
-    if (Cmp(A, N) >= 0) {
-        uint z = 0u;
-        Sub96Wide(A, z, N);
-    }
-}
-
 
 // 32-bit inverse mod 2^32 (Newton iteration), for odd a
 uint InvMod2_32(uint a) {
@@ -522,12 +492,14 @@ void MontDouble96(inout uint96 A, uint96 N) {
 }
 
 #ifdef USE_DOUBLE
-// --------- helper to compute R mod N once (R = 2^96) using your existing float reducer style ---------
+//
+// on a gpu with fast doubles, this is faster than MontOne96_Int()
+//
 void ReduceMod192(inout uint192 X, uint96 Q, double qinv) {
     uint192 Y;
     uint96 D;
-
-    // Two quick passes like SqMod()
+/*
+    // Two quick passes like old SqMod()
     fto96(toF(X) * qinv, D);
     Mul192(D, Q, Y);
     Sub(X, Y);
@@ -535,7 +507,7 @@ void ReduceMod192(inout uint192 X, uint96 Q, double qinv) {
     fto96(toF(X) * qinv, D);
     Mul192(D, Q, Y);
     Sub(X, Y);
-
+*/
     while (Cmp(X, Q) > 0) {
         fto96(toF(X) * qinv, D);
         if (Zero(D)) { D.x[0] = 1u; }
@@ -552,7 +524,37 @@ void MontOne96(uint96 Q, double qinv, out uint96 oneBar) {
     ReduceMod192(X, Q, qinv);
     oneBar = X.L;
 }
-#endif
+#else
+// -------- a = (2*a) mod N, with full carry handling (works for any reduced a < N) --------
+void ModDouble96(inout uint96 A, uint96 N) {
+    uint64_t acc;
+
+    acc = (uint64_t(A.x[0]) << 1);
+    A.x[0] = uint(acc);
+    uint64_t carry = acc >> 32;
+
+    acc = (uint64_t(A.x[1]) << 1) + carry;
+    A.x[1] = uint(acc);
+    carry = acc >> 32;
+
+    acc = (uint64_t(A.x[2]) << 1) + carry;
+    A.x[2] = uint(acc);
+    carry = acc >> 32;
+
+    uint top = uint(carry); // 0 or 1 (the 2^96 limb)
+
+    // since A < N, 2A < 2N, so at most one subtract is needed
+    if (top != 0u || Cmp(A, N) >= 0) {
+        Sub96Wide(A, top, N); // top should become 0 after this
+    }
+
+    // (optional safety)
+    if (Cmp(A, N) >= 0) {
+        uint z = 0u;
+        Sub96Wide(A, z, N);
+    }
+}
+
 
 // -------- Montgomery representation of 1: oneBar = R mod Q, where R = 2^96 --------
 void MontOne96_Int(uint96 Q, out uint96 oneBar) {
@@ -562,6 +564,7 @@ void MontOne96_Int(uint96 Q, out uint96 oneBar) {
     }
     // after 96 doublings: oneBar = 2^96 mod Q
 }
+#endif
 
 // --------- Exp base 2: returns true iff 2^P mod Q == 1 (i.e., Q divides M_P) ---------
 // Montgomery version
@@ -686,7 +689,7 @@ void main() {
 			pretf(kt);
 			//return;
 			}*/
-		const uint lim = MnLen - 3;
+		const uint lim = MnLen - 0;
 		uint kmod[lim];
 		for (int j = 0; j < lim; j++) {
 			kmod[j] = Mod(kbase, Mn[j]);
