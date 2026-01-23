@@ -331,6 +331,9 @@ uint add4c(uint a, uint b, uint c, uint d, inout uint carry)
     carry  += c1 + c2 + c3;
     return s;
 }
+
+// Reduce a 192-bit T modulo N using Montgomery (N is 96-bit, odd)
+// Avoiding 64 bit seems a bit faster
 void MontReduce3(uint192 T, uint96 N, uint n0prime, out uint96 R)
 {
     uint t0 = T.L.x[0];
@@ -409,6 +412,7 @@ void MontReduce3(uint192 T, uint96 N, uint n0prime, out uint96 R)
 }
 
 // Reduce a 192-bit T modulo N using Montgomery (N is 96-bit, odd)
+// this version using uint64_t is a bit slower
 void xxMontReduce3(uint192 T, uint96 N, uint n0prime, out uint96 R) {
     // T as 6 limbs t0..t5 (little endian)
     uint t0 = T.L.x[0];
@@ -723,7 +727,6 @@ bool tfm(uint96 k) {
 }
 
 void main() {
-	//uint I = gl_GlobalInvocationID.x;
 	//
 	// K is the base starting value for this invocation. 
 	//

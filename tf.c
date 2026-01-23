@@ -36,7 +36,6 @@ uint32_t queueFamilyIndex;
 //
 // total threads to start.
 //
-//const int np = 1024*1024*8;
 const int NP = 1024*512;
 const int XSIZE = 64;
 
