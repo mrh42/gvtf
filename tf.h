@@ -18,16 +18,17 @@
 //#define ListLen 2043740170
 // This is allocated in HOST_VISIBLE_LOCAL memory, and is shared with host.
 // it is somewhat slow, compared to DEVICE_LOCAL memory.
+// 64-bit entries are first to maintain alignment
 struct Stuff {
 	uint64_t    P;            // 64 bit
+	uint64_t    K[2];         // 128-bit K
+	uint64_t    Found[10][2]; // up to 10 96-bit K values
+	uint32_t    NFound;       // number of factors found
 	uint32_t    Init;         // controls the code path in main()
 	uint32_t    Big;          // Need > 96-bit math
 	uint32_t    UseDouble;    // use double math in the shader
-	uint64_t    K[2];         // 128-bit K
-	uint64_t    Found[10][2]; // up to 10 96-bit K values
-	uint32_t    NFound;
 	uint32_t    Debug[4];     // debugging passed back from the gpu
-	uint32_t    L3;
+	uint32_t    TestL;        // number of values returned to the cpu in Test[]
 	uint32_t    Test[1000];
 };
 //
@@ -40,8 +41,6 @@ struct Stuff2 {
 	uint32_t    xL, xL2, xLl;
 	uint32_t    List[ListLen];
 	uint32_t    List2[ListLen];
-	uint32_t    PreTop;
-	uint64_t    PreSq[2];
 	uint32_t    Xx[MnLen][1+M6/32];
 };
 

@@ -148,7 +148,7 @@ func initInput(P uint64) int {
 	C.runCommandBuffer()
 	p.Init = 1   // first sieve
 	C.runCommandBuffer()
-	fmt.Printf("# GPU threads used for init: %d\n", p.Debug[2])
+	fmt.Printf("# GPU threads used for first sieve: %d\n", p.Debug[2])
 
 	p.Init = 5;  // copy back atomic counters, to check if it went correctly
 	C.runCommandBuffer()
@@ -236,7 +236,8 @@ func (result *Result) tfRun() {
 	p.Init = 5;  // copy L2 back, for sanity checking
 	C.runCommandBuffer()
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# L2: %d/%d Ll: %d, e: %s\n", p.Debug[1], M, p.Debug[0], elapsed)
+	fmt.Printf("# block: %d, first sieve: %d, second sieve: %d (%s)\n", M, p.Debug[0], p.Debug[1], elapsed)
+	//fmt.Printf("# L2: %d/%d Ll: %d, e: %s\n", p.Debug[1], M, p.Debug[0], elapsed)
 
 	if result.kfactors == nil {
 		result.kfactors = make([]*big.Int, 0, 10)
@@ -281,7 +282,7 @@ func (result *Result) tfRun() {
 
 			f64, _ := f.Float64()
 			flb2 := math.Log2(f64 * float64(result.Exponent) * 2.0)
-			fmt.Fprintf(os.Stdout, "# %d kfactor %s %.4f C: %d\n",
+			fmt.Fprintf(os.Stdout, "# %d kfactor %s %.2f %d\n",
 					result.Exponent, f, flb2, count);
 		}
 
@@ -307,7 +308,7 @@ func (result *Result) tfRun() {
 		C.runCommandBuffer()
 		p.Init = 2;  // run sieve2
 		C.runCommandBuffer()
-		if (uint(p.L3) > 0) {
+		if (uint(p.TestL) > 0) {
 			// sanity check that only composites were tossed.
 			result.checkSieve(K, p)
 		}
@@ -321,7 +322,7 @@ func (result *Result) tfRun() {
 	return
 }
 func (result *Result) checkSieve(K *big.Int, p *C.struct_Stuff) {
-	fmt.Printf("# verify-L3: %d\n", p.L3)
+	//fmt.Printf("# verify: %d\n", p.TestL)
 	// Verify the gpu side is working correctly.
 	// Check a subset of composite rejected K/Q values, to ensure they are not prime.
 	for i := 0; i < 1000; i++ {
@@ -448,7 +449,7 @@ func (result *Result) runOne(docheckpoint bool) {
 	startt := time.Now()
 	ii := initInput(result.Exponent)
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# initInput(%d) took %s\n", result.Exponent, elapsed)
+	fmt.Printf("# setup for exponent %d took %s\n", result.Exponent, elapsed)
 	if ii == 0 {
 		result.krestart = new(big.Int)
 		filename := fmt.Sprintf("%d.ckp", result.Exponent)
@@ -532,7 +533,7 @@ func main() {
 	flag.StringVar(&host, "host", host, "hostname")
 	flag.Parse()
 
-	fmt.Printf("# sizes: %d %d\n", C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
+	fmt.Printf("# size of GPU memory allocations: %d (shared) %d (local)\n", C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2)
 	if 0 != C.tfVulkanInit(C.int(*devn), C.sizeof_struct_Stuff, C.sizeof_struct_Stuff2, C.int(*version)) {
 		fmt.Fprintln(os.Stderr, "could not intialize vulkan")
 		return

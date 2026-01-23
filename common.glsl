@@ -43,15 +43,15 @@ layout (local_size_x = 64) in;
 // it is somewhat slow, compared to DEVICE_LOCAL memory.
 layout(binding = 0) buffer buf
 {	
-	uint64_t    P;          // input from CPU side
-	uint        Init;       // If this is 1, then we setup our tables once.
-	uint        Big;        // Need > 96-bit math
-	uint        UseDouble;
-	uint64_t    K[2];       // base K input from CPU side
-	uint64_t    Found[10][2];   // output to tell the CPU we found a K resulting in a factor
+	uint64_t    P;            // input from CPU side
+	uint64_t    K[2];         // base K input from CPU side
+	uint64_t    Found[10][2]; // output to tell the CPU we found a K resulting in a factor
 	uint        NFound;
-	uint        Debug[4];   // output only used for debugging
-	uint        L3;
+	uint        Init;         // If this is 1, then we setup our tables once.
+	uint        Big;          // Need > 96-bit math
+	uint        UseDouble;    // use double math in the shader
+	uint        Debug[4];     // output only used for debugging
+	uint        TestL;        // number of values returned to the cpu in Test[]
 	uint        Test[1000];
 };
 
@@ -60,7 +60,7 @@ layout(binding = 0) buffer buf
 layout(binding = 1) buffer buf2
 {
 	uint    xL, xL2, xLl;
-	uint       List[ListN];
-	uint       List2[ListN];
+	uint    List[ListN];
+	uint    List2[ListN];
 	uint    Xx[MnLen][1+Mn[6]/32];
 };

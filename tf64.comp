@@ -627,7 +627,7 @@ void main() {
 			Debug[2] = 0;
 			Debug[3] = 0;
 			xL = 0;
-			L3 = 0;
+			TestL = 0;
 			NFound = 0;
 			if (Init == 12) {
 				xL2 = 0;
@@ -716,7 +716,7 @@ void main() {
 				// Just for debugging, normally not used.
 				// Give a sample of composites back to the CPU for primality testing.
 				// This is just for looking for bugs in the sieving process.
-			     	uint ii = atomicAdd(L3, 1);
+			     	uint ii = atomicAdd(TestL, 1);
 				if (ii < 1000) {
 					Test[ii] = o;
 				}

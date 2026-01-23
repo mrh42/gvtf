@@ -747,7 +747,7 @@ void main() {
 			Debug[2] = 0;
 			Debug[3] = 0;
 			xL = 0;
-			L3 = 0;
+			TestL = 0;
 			NFound = 0;
 			if (Init == 12) {
 				xL2 = 0;
@@ -821,7 +821,8 @@ void main() {
 			} else if (false) {
 				// Give a sample of composites back to the CPU for primality testing.
 				// This is just for looking for bugs in the sieving process.
-			     	uint ii = atomicAdd(L3, 1);
+				// XXX: TestL gets incremented past 1000, so the CPU side see a value > 1000.  fix...
+			     	uint ii = atomicAdd(TestL, 1);
 				if (ii < 1000) {
 					Test[ii] = o;
 				}
