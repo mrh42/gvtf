@@ -2,8 +2,8 @@ gvtf: spv32.h spv64.h tf.c tf.h gvtf.go go.mod
 	go build
 
 GLSFLAGS = --target-env spirv1.6
-# Darwin/metal doesn't have double, so comment out
-GLSFLAGS += -DUSE_DOUBLE
+# Darwin/metal doesn't have double
+#GLSFLAGS += -DNO_DOUBLE
 
 spv32.h: tf32.comp
 	glslangValidator $(GLSFLAGS) --vn spv32 -V tf32.comp -o spv32.h

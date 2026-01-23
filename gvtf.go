@@ -126,12 +126,17 @@ func (r *Result) readcheckpoint(filename string) {
 	}
 }
 
+var useDouble bool
 
 func initInput(P uint64) int {
-	//p := C.mrhGetMap();
-	p := (*C.struct_Stuff)(C.mrhGetMap());
+
+	p := (*C.struct_Stuff)(C.mrhGetMap())
 	
 	p.P = C.uint64_t(P)
+	p.UseDouble = 0
+	if useDouble {
+		p.UseDouble = 1
+	}
 
 	p.Init = 13  // init atomics
 	C.runCommandBuffer()
@@ -513,6 +518,7 @@ func main() {
 	flag.Uint64Var(&P, "exponent", 4112322971, "The exponent to test")
 	flag.StringVar(&workfile, "worktodo", "", "worktodo filename")
 	flag.BoolVar(&docheckpoint, "checkpoint", false, "do checkpoints while running")
+	flag.BoolVar(&useDouble, "usedouble", true, "Use floating point double values in the shader")
 	devn := flag.Int("devn", 0, "Vulkan device number to use")
 	k1 := flag.String("k1", "1", "Starting K value")
 	B2 := flag.Uint("bithi", 68, "bit limit to test to")
