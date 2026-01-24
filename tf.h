@@ -12,7 +12,7 @@
 #define M (4 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23)  // 446,185,740
 #define M6 (103 * 107 * 109 * 113)                  // 135,745,657
 
-#define MnLen 22
+#define MnLen 26 // Make sure this matches the shader so we allocate enough memory
 
 #define ListLen 72990720
 //#define ListLen 2043740170

@@ -236,8 +236,11 @@ func (result *Result) tfRun() {
 	p.Init = 5;  // copy L2 back, for sanity checking
 	C.runCommandBuffer()
 	elapsed := time.Now().Sub(startt)
-	fmt.Printf("# block: %d, first sieve: %d, second sieve: %d (%s)\n", M, p.Debug[0], p.Debug[1], elapsed)
-	//fmt.Printf("# L2: %d/%d Ll: %d, e: %s\n", p.Debug[1], M, p.Debug[0], elapsed)
+	first := uint(p.Debug[0])
+	second := uint(p.Debug[1])
+	rat := float64(second) / float64(C.M)
+	
+	fmt.Printf("# block: %d, first sieve: %d, second sieve: %d (%0.2f%%) (%s)\n", M, first, second, rat*100, elapsed)
 
 	if result.kfactors == nil {
 		result.kfactors = make([]*big.Int, 0, 10)
@@ -322,7 +325,7 @@ func (result *Result) tfRun() {
 	return
 }
 func (result *Result) checkSieve(K *big.Int, p *C.struct_Stuff) {
-	//fmt.Printf("# verify: %d\n", p.TestL)
+	fmt.Printf("# verify: %d\n", p.TestL)
 	// Verify the gpu side is working correctly.
 	// Check a subset of composite rejected K/Q values, to ensure they are not prime.
 	for i := 0; i < 1000; i++ {

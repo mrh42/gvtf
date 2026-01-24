@@ -1009,7 +1009,7 @@ void main() {
 				if (c) {
 					atomicOr(Xx[21][i/32], 1u << (i%32));
 				}
-			}/*
+			}
 			if (i < Mn[22]) {
 				bool c = (Mod0(Q,421)||Mod0(Q,431) || Mod0(Q,433));
 				if (c) {
@@ -1033,7 +1033,7 @@ void main() {
 				if (c) {
 					atomicOr(Xx[25][i/32], 1u << (i%32));
 				}
-			}*/
+			}
 		}
 		// no threads reach here.
 		return;

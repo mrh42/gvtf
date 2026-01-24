@@ -900,13 +900,31 @@ void main() {
 				if (c) {
 					atomicOr(Xx[21][i/32], 1u << (i%32));
 				}
-			}/*
+			}
 			if (i < Mn[22]) {
 				bool c = (Mod0(Q,421)||Mod0(Q,431) || Mod0(Q,433));
 				if (c) {
 					atomicOr(Xx[22][i/32], 1u << (i%32));
 				}
-			}*/
+			}
+			if (i < Mn[23]) {
+				bool c = (Mod0(Q,439)||Mod0(Q,443) || Mod0(Q,449));
+				if (c) {
+					atomicOr(Xx[23][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[24]) {
+				bool c = (Mod0(Q,457)||Mod0(Q,461) || Mod0(Q,463));
+				if (c) {
+					atomicOr(Xx[24][i/32], 1u << (i%32));
+				}
+			}
+			if (i < Mn[25]) {
+				bool c = (Mod0(Q,467)||Mod0(Q,479) || Mod0(Q,487));
+				if (c) {
+					atomicOr(Xx[25][i/32], 1u << (i%32));
+				}
+			}
 		}
 		// no threads reach here.
 	}
