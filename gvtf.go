@@ -279,6 +279,9 @@ func (result *Result) tfRun() {
 		if p.Debug[3] > 0 {
 			fmt.Fprintf(os.Stderr, "# Overflow in GPU code detected %d\n", count)
 		}
+		if p.Debug[0] > 0 {
+			fmt.Fprintf(os.Stderr, "# debug[0] %d\n", p.Debug[0])
+		}
 		for i := 0; i < int(p.NFound); i++ {
 			f := big2(p.Found[i][0], p.Found[i][1])
 			result.kfactors = append(result.kfactors, f)

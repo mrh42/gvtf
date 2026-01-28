@@ -578,7 +578,7 @@ int tfVulkanInit(int devn, uint64_t bs1, uint64_t bs2, int version) {
 		code = spv64;
 	} else {
 		needfree = 1;
-		code = readFile(&codesize, "comp.spv");
+		code = readFile(&codesize, "tf.spv");
 		if (code == 0) {return -1;}
 	}
 
