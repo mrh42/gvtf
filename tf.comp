@@ -15,6 +15,12 @@ struct uint192 {
 	uint96 L;
 };
 
+void to96(uint64_t n, inout uint96 o) {
+	uint p0 = uint(n);      // lower 32-bits
+	uint p1 = uint(n>>32);  // upper 32-bits
+	o.x = uvec3(p0, p1, 0);
+}
+
 bool Zero(uint96 A) {
 	//return all(equal(A.x, uvec3(0, 0, 0)));
         return A.x[0] == 0 && A.x[1] == 0 && A.x[2] == 0;
@@ -35,6 +41,14 @@ void Lsh(inout uint192 A) {
 	Lsh(A.L);
 	Lsh(A.H);
 	A.H.x[0] |= c >> 31;
+}
+
+void Rsh(inout uint96 A) {
+	A.x[0] >>= 1;
+	A.x[0] |= (A.x[1] & 1u) << 31;
+	A.x[1] >>= 1;
+	A.x[1] |= (A.x[2] & 1u) << 31;
+	A.x[2] >>= 1;
 }
 
 bool Gt(uint96 A, uint B) {
@@ -63,6 +77,16 @@ bool Gt(uint192 A, uint96 B) {/*
 	return false;
 }
 
+bool Gtb(uint96 A, uint96 B, uint diff) {
+
+	if (A.x[2] > B.x[2]) {return true; }
+	if (A.x[2] < B.x[2]) {return false;}
+	if (A.x[1] > B.x[1]) {return true;}
+	if (A.x[1] < B.x[1]) {return false;}
+	if (A.x[0] > B.x[0]) {return true;}
+	return false;
+}
+
 
 void Inc(inout uint96 A) {
 	A.x[0] += 1;
@@ -79,8 +103,21 @@ void Add(inout uint96 A, uint B) {
 	A.x[1] = uaddCarry(A.x[1], C, C);
 	A.x[2] += C;
 }
+void Add(inout uint96 A, uint96 B) {
+	uint c1, c2;
 
-void Sub(inout uint192 A, uint192 B) {
+	A.x[0] = uaddCarry(A.x[0], B.x[0], c1);
+
+	A.x[1] = uaddCarry(A.x[1], c1, c2);
+	A.x[1] = uaddCarry(A.x[1], B.x[1], c1);
+
+	A.x[2] += c1+c2;
+
+	A.x[2] += B.x[2];
+}
+
+// return true on underflow, ie B > A
+bool Sub(inout uint192 A, uint192 B) {
 
 	uint c, c1;
 	
@@ -97,7 +134,8 @@ void Sub(inout uint192 A, uint192 B) {
 	A.H.x[1] = usubBorrow(A.H.x[1], c+c1, c);	
 	A.H.x[1] = usubBorrow(A.H.x[1], B.H.x[1], c1);	
 
-	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c+c1, c);	
+	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c+c1, c);
+	return c != 0;
 }
 
 void Sub(inout uint96 A, uint96 B) {
@@ -231,9 +269,9 @@ bool Mod0(uint96 X, uint Q)
 }
 
 // 192-bit Floating point version
-void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
+bool SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	uint192 X, Y;
-	uint96 D;
+	uint96 D, D2, D3;
 
 	Mul192(A, A, X);
 	if (doshift) {
@@ -241,34 +279,34 @@ void SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	}
 
 	int i = 0;
-	
+	bool under = false;
+
 	// Using floating point, take a guess at a number D such that we could subtract D*Q to leave our remander.
 	// Always guess D a little low, and refine our guess as we get closer.
 	// normally takes 2 passes.
 	//
-	//while (i < 10 && Gt(X, Q)) {
-	while (Gt(X, Q)) {
+	//while (Gt(X, Q)) {
 	//while (Cmp(X, Q) > 0) {
+	while (!under && Gt(X, Q)) {
 		fto96(toF(X)*qinv, D);
 
 		if (Zero(D)) {
 			D.x[0] = 1;
+			//atomicAdd(Debug[0], 1);
 		}
 		Mul192(D, Q, Y);
-		Sub(X, Y);
+		under = Sub(X, Y);
 		i++;
 	}
 	if (i > 3) {
 		atomicAdd(Debug[0], 1);
 	}
-	A = X.L;
+	if (!under) {
+		A = X.L;
+	}
+	return under;
 }
 
-void to96(uint64_t n, inout uint96 o) {
-	uint p0 = uint(n);      // lower 32-bits
-	uint p1 = uint(n>>32);  // upper 32-bits
-	o.x = uvec3(p0, p1, 0);
-}
 
 bool tf(uint96 k) {
 	uint96 sq, q, pp;
@@ -288,17 +326,23 @@ bool tf(uint96 k) {
 	// Make our 1/q just a tiny bit too small, so we don't over estimate,
         // but not so small as to need extra passes.
 	double qinv = 0.999999999999lf / toF(q);
-	//double qinv = 1.0lf / toF(q);
+	double qinv2 = 1.0lf / toF(q);
 
 	// Do the TF math: Starting with 1, repeatedly square,
 	//  remove the top bit of the exponent and if 1 multiply squared value by 2,
 	//  then compute mod Q.
 	sq.x = uvec3(1, 0, 0);
 
+	bool under;
 	for (int b = top; b >= 0; b--) {
 		bool bb = (P & (one)) != 0;
 		one >>= 1;
-		SqMod(sq, q, bb, qinv);
+
+		under = SqMod(sq, q, bb, qinv);
+		if (under) {
+			atomicAdd(Debug[0], k.x[0]);
+			//under = SqMod(sq, q, bb, qinv);
+		}
 	}
 	// If the result is 1, then we found a factor.
 	return sq.x[0] == 1 && sq.x[1] == 0 && sq.x[2] == 0;
