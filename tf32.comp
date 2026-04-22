@@ -98,7 +98,8 @@ void Add(inout uint96 A, uint96 B) {
 
 }
 
-void Sub(inout uint192 A, uint192 B) {
+// return true on underflow, ie B > A
+bool Sub(inout uint192 A, uint192 B) {
 
 	uint c, c1;
 	
@@ -115,8 +116,10 @@ void Sub(inout uint192 A, uint192 B) {
 	A.H.x[1] = usubBorrow(A.H.x[1], c+c1, c);	
 	A.H.x[1] = usubBorrow(A.H.x[1], B.H.x[1], c1);	
 
-	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c+c1, c);	
+	A.H.x[2] = usubBorrow(A.H.x[2], B.H.x[2]+c+c1, c);
+	return c != 0;
 }
+
 void Sub(inout uint96 A, uint96 B) {
 
 	uint c, c1;
@@ -584,21 +587,16 @@ uint fMod(uint96 X, uint Q) {
 void ReduceMod192(inout uint192 X, uint96 Q, double qinv) {
     uint192 Y;
     uint96 D;
-/*
-    // Two quick passes like old SqMod()
-    fto96(toF(X) * qinv, D);
-    Mul192(D, Q, Y);
-    Sub(X, Y);
 
-    fto96(toF(X) * qinv, D);
-    Mul192(D, Q, Y);
-    Sub(X, Y);
-*/
-    while (Cmp(X, Q) > 0) {
+    bool under = false;
+    while (!under && Cmp(X, Q) > 0) {
         fto96(toF(X) * qinv, D);
         if (Zero(D)) { D.x[0] = 1u; }
         Mul192(D, Q, Y);
-        Sub(X, Y);
+        under = Sub(X, Y);
+    }
+    if (under) {
+	    atomicAdd(Debug[0], 1);
     }
 }
 
@@ -890,19 +888,19 @@ void main() {
 					atomicOr(Xx[3][i/32], 1u << (i%32));
 				}
 			}
-		       	if (i < Mn[4]) {			     
+		       	if (i < Mn[4]) {
 				bool c = (Mod0(Q,67) || Mod0(Q,71) || Mod0(Q,73)|| Mod0(Q,79));
 				if (c) {
 					atomicOr(Xx[4][i/32], 1u << (i%32));
 				}
 			}
-			if (i < Mn[5]) {			     
+			if (i < Mn[5]) {
 				bool c = (Mod0(Q,83) || Mod0(Q,89) || Mod0(Q,97)|| Mod0(Q,101));
 				if (c) {
 					atomicOr(Xx[5][i/32], 1u << (i%32));
 				}
 			}
-			if (i < Mn[6]) {			     
+			if (i < Mn[6]) {
 				bool c = (Mod0(Q,103)||Mod0(Q,107) || Mod0(Q,109)||Mod0(Q,113));
 				if (c) {
 					atomicOr(Xx[6][i/32], 1u << (i%32));

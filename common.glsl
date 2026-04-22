@@ -47,7 +47,7 @@ layout(binding = 0) buffer buf
 	uint64_t    K[2];         // base K input from CPU side
 	uint64_t    Found[10][2]; // output to tell the CPU we found a K resulting in a factor
 	uint        NFound;
-	uint        Init;         // If this is 1, then we setup our tables once.
+	uint        Init;         // controls the code path in main()
 	uint        Big;          // Need > 96-bit math
 	uint        UseDouble;    // use double math in the shader
 	uint        Debug[4];     // output only used for debugging

@@ -1,10 +1,19 @@
 #version 460
 
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
-//#extension GL_EXT_shader_atomic_int64: enable
 #extension GL_GOOGLE_include_directive : enable
 
+
 #include "common.glsl"
+
+// 2^64, 2^128 and 2^192
+const   double p32 =  4294967296.0lf;
+const 	double p64 =  18446744073709551616.0lf;
+const   double p96 =  79228162514264337593543950336.0lf;
+const	double p128 = 340282366920938463463374607431768211456.0lf;
+const   double p160 = 1461501637330902918203684832716283019655932542976.0lf;
+//const	double p192 = 6277101735386680763835789423207666416102355444464034512896.0lf;
+
 
 struct uint96 {
 	uvec3 x;
@@ -15,11 +24,36 @@ struct uint192 {
 	uint96 L;
 };
 
+
+
+double toF(uint96 A) {
+	return double(A.x[0]) + double(A.x[1]) * p32 + double(A.x[2]) * p64;
+}
+double toF(uint192 A) {
+	return double(A.L.x[0]) + double(A.L.x[1]) * p32 + double(A.L.x[2]) * p64 +
+		double(A.H.x[0]) * p96 + double(A.H.x[1]) * p128 + double(A.H.x[2]) * p160;
+}
+void fto96(double f, out uint96 A) {
+	A.x[2] = uint(f / p64);
+	A.x[1] = uint((f - double(A.x[2]) * p64) / p32);
+	A.x[0] = uint(f - (double(A.x[2]) * p64 + double(A.x[1]) * p32));
+}
+void fto96x(double f, out uint96 A) {
+	uint x = uint(f / p64);
+	A.x[2] = x;
+	uint y = uint((f - x * p64) / p32);
+	A.x[1] = y;
+	A.x[0] = uint(f - (x * p64 + y * p32));
+}
+
+
 void to96(uint64_t n, inout uint96 o) {
 	uint p0 = uint(n);      // lower 32-bits
 	uint p1 = uint(n>>32);  // upper 32-bits
 	o.x = uvec3(p0, p1, 0);
 }
+
+
 
 bool Zero(uint96 A) {
 	//return all(equal(A.x, uvec3(0, 0, 0)));
@@ -58,13 +92,7 @@ bool Gt(uint96 A, uint B) {
 	return A.x[0] > B;
 }
 
-bool Gt(uint192 A, uint96 B) {/*
-	uvec3 z = uvec3(0, 0, 0);
-	bool nz = any(greaterThan(A.H.x, z));
-	if (nz) {return true;}
-	bvec3 g = greaterThan(A.L.x, B.x);
-	bvec3 e = equal(A.L.x, B.x);
-	return nz || (g[2]) || (e[2] && g[1]) || (e[2] && e[1] && g[0]);*/
+bool Gt(uint192 A, uint96 B) {
 
 	if (A.H.x[2] != 0 || A.H.x[1] != 0 || A.H.x[0] != 0) {
 		return true;
@@ -76,17 +104,6 @@ bool Gt(uint192 A, uint96 B) {/*
 	if (A.L.x[0] > B.x[0]) {return true;}
 	return false;
 }
-
-bool Gtb(uint96 A, uint96 B, uint diff) {
-
-	if (A.x[2] > B.x[2]) {return true; }
-	if (A.x[2] < B.x[2]) {return false;}
-	if (A.x[1] > B.x[1]) {return true;}
-	if (A.x[1] < B.x[1]) {return false;}
-	if (A.x[0] > B.x[0]) {return true;}
-	return false;
-}
-
 
 void Inc(inout uint96 A) {
 	A.x[0] += 1;
@@ -151,33 +168,6 @@ void Sub(inout uint96 A, uint96 B) {
 }
 
 
-// 2^64, 2^128 and 2^192
-const   double p32 =  4294967296.0lf;
-const 	double p64 =  18446744073709551616.0lf;
-const   double p96 =  79228162514264337593543950336.0lf;
-const	double p128 = 340282366920938463463374607431768211456.0lf;
-const   double p160 = 1461501637330902918203684832716283019655932542976.0lf;
-//const	double p192 = 6277101735386680763835789423207666416102355444464034512896.0lf;
-
-double toF(uint96 A) {
-	return double(A.x[0]) + double(A.x[1]) * p32 + double(A.x[2]) * p64;
-}
-double toF(uint192 A) {
-	return double(A.L.x[0]) + double(A.L.x[1]) * p32 + double(A.L.x[2]) * p64 +
-		double(A.H.x[0]) * p96 + double(A.H.x[1]) * p128 + double(A.H.x[2]) * p160;
-}
-void fto96(double f, out uint96 A) {
-	A.x[2] = uint(f / p64);
-	A.x[1] = uint((f - double(A.x[2]) * p64) / p32);
-	A.x[0] = uint(f - (double(A.x[2]) * p64 + double(A.x[1]) * p32));
-}
-void fto96x(double f, out uint96 A) {
-	uint x = uint(f / p64);
-	A.x[2] = x;
-	uint y = uint((f - x * p64) / p32);
-	A.x[1] = y;
-	A.x[0] = uint(f - (x * p64 + y * p32));
-}
 
 void Mul192(inout uint96 A, uint96 B, out uint192 R)
 {
@@ -216,7 +206,7 @@ void Mul192(inout uint96 A, uint96 B, out uint192 R)
 	R.H.x[2] = uaddCarry(h[8], c, c1);
 }
 
-
+// unused old version.
 uint Modf(uint96 X, uint Q) {
 	if (X.x[2] == 0) {
 		uint64_t x64 = X.x[0] | uint64_t(X.x[1]) << 32;
@@ -285,8 +275,6 @@ bool SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	// Always guess D a little low, and refine our guess as we get closer.
 	// normally takes 2 passes.
 	//
-	//while (Gt(X, Q)) {
-	//while (Cmp(X, Q) > 0) {
 	while (!under && Gt(X, Q)) {
 		fto96(toF(X)*qinv, D);
 
@@ -306,6 +294,8 @@ bool SqMod(inout uint96 A, uint96 Q, bool doshift, double qinv) {
 	}
 	return under;
 }
+
+#include "dd.glsl"
 
 
 bool tf(uint96 k) {
@@ -403,9 +393,6 @@ void main() {
 			uint96 k = kbase;
 			uint o = List2[i];
 
-			// XXX: code is faster with this line, even if the condition is never true, weird
-			// something magic about the possibility of a continue.
-			// doesn't really matter what the condition is.
 			if (o == 0 && Zero(k)) {continue;}
 
 			// the actual K this thread will test.
@@ -521,19 +508,19 @@ void main() {
 					atomicOr(Xx[3][i/32], 1u << (i%32));
 				}
 			}
-		       	if (i < Mn[4]) {			     
+		       	if (i < Mn[4]) {
 				bool c = (Mod0(Q,67) || Mod0(Q,71) || Mod0(Q,73)|| Mod0(Q,79));
 				if (c) {
 					atomicOr(Xx[4][i/32], 1u << (i%32));
 				}
 			}
-			if (i < Mn[5]) {			     
+			if (i < Mn[5]) {
 				bool c = (Mod0(Q,83) || Mod0(Q,89) || Mod0(Q,97)|| Mod0(Q,101));
 				if (c) {
 					atomicOr(Xx[5][i/32], 1u << (i%32));
 				}
 			}
-			if (i < Mn[6]) {			     
+			if (i < Mn[6]) {
 				bool c = (Mod0(Q,103)||Mod0(Q,107) || Mod0(Q,109)||Mod0(Q,113));
 				if (c) {
 					atomicOr(Xx[6][i/32], 1u << (i%32));

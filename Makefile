@@ -11,7 +11,7 @@ spv32.h: tf32.comp common.glsl
 spv64.h: tf64.comp common.glsl
 	glslangValidator $(GLSFLAGS) --vn spv64 -V tf64.comp -o spv64.h
 
-tf.spv: tf.comp common.glsl
+tf.spv: tf.comp common.glsl dd.glsl
 	glslangValidator $(GLSFLAGS) -V tf.comp -o tf.spv
 
 go.mod:
